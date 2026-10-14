@@ -90,17 +90,37 @@ fn which_in_login_shell(cmd: &str) -> bool {
 #[cfg(target_os = "windows")]
 fn which_in_login_shell(cmd: &str) -> bool {
     use std::env;
-    // GUI 进程 PATH 常缺 npm 全局等用户目录:where + 常见安装位置双查
+    // GUI 进程 PATH 缺用户目录:where -> 常见安装位置 -> 注册表用户 PATH,三重查找
     let via_where = Command::new("cmd").args(["/C", &format!("where {cmd}")])
         .output()
         .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty())
         .unwrap_or(false);
     if via_where { return true; }
     let mut dirs: Vec<PathBuf> = vec![];
+    if let Ok(up) = env::var("USERPROFILE") {
+        let up = PathBuf::from(up);
+        dirs.push(up.join(".local").join("bin"));
+        dirs.push(up.join(".codex").join("bin"));
+        dirs.push(up.join(".claude").join("local"));
+    }
     if let Ok(appdata) = env::var("APPDATA") { dirs.push(PathBuf::from(appdata).join("npm")); }
-    if let Ok(local) = env::var("LOCALAPPDATA") { dirs.push(PathBuf::from(local).join("Programs")); }
+    if let Ok(local) = env::var("LOCALAPPDATA") {
+        dirs.push(PathBuf::from(local).join("Microsoft").join("WindowsApps"));
+        dirs.push(PathBuf::from(local).join("Programs"));
+    }
+    if let Ok(out) = Command::new("powershell")
+        .args(["-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('PATH','User')"])
+        .output()
+    {
+        if out.status.success() {
+            for seg in String::from_utf8_lossy(&out.stdout).split(';') {
+                let seg = seg.trim();
+                if !seg.is_empty() { dirs.push(PathBuf::from(seg)); }
+            }
+        }
+    }
     dirs.iter().any(|d| {
-        [format!("{cmd}.cmd"), format!("{cmd}.exe")]
+        [format!("{cmd}.exe"), format!("{cmd}.cmd"), format!("{cmd}.bat")]
             .iter().any(|f| d.join(f).exists())
     })
 }
@@ -127,20 +147,26 @@ fn find_app(candidates: &[&str]) -> Option<String> {
 #[cfg(target_os = "windows")]
 fn find_app(candidates: &[&str]) -> Option<String> {
     use std::env;
-    let mut roots: Vec<PathBuf> = vec![];
+    // 返回可启动的完整 exe 路径:覆盖 MSIX/NSIS/官方安装器三类位置
+    let mut probes: Vec<PathBuf> = vec![];
     if let Ok(local) = env::var("LOCALAPPDATA") {
-        roots.push(PathBuf::from(local).join("Programs"));
-    }
-    roots.push(PathBuf::from("C:\\Program Files"));
-    roots.push(PathBuf::from("C:\\Program Files (x86)"));
-    for name in candidates {
-        for root in &roots {
-            if root.join(format!("{name}\\{name}.exe")).exists() || root.join(format!("{name}.exe")).exists() {
-                return Some(name.to_string());
-            }
+        let l = PathBuf::from(local);
+        for name in candidates {
+            probes.push(l.join("Microsoft").join("WindowsApps").join(format!("{name}.exe")));
+            probes.push(l.join("Programs").join(name).join(format!("{name}.exe")));
+            probes.push(l.join("Programs").join(format!("{name}.exe")));
+        }
+        if candidates.iter().any(|c| *c == "Claude") {
+            probes.push(l.join("AnthropicClaude").join("claude.exe"));
         }
     }
-    None
+    for root in ["C:\\Program Files", "C:\\Program Files (x86)"] {
+        for name in candidates {
+            probes.push(PathBuf::from(root).join(name).join(format!("{name}.exe")));
+            probes.push(PathBuf::from(root).join(format!("{name}.exe")));
+        }
+    }
+    probes.into_iter().find(|p| p.exists()).map(|p| p.to_string_lossy().to_string())
 }
 
 // ---------- 状态 ----------
@@ -614,17 +640,16 @@ fn launch(id: String) -> Result<(), String> {
                 spec.0
             )]).output().map_err(|e| format!("打开终端失败:{e}"))?;
             #[cfg(target_os = "windows")]
-            {
-                let cmd_name = spec.0;
-                let out = Command::new("cmd")
-                    .args(["/C", &format!("start \"猫猫 {cmd_name}\" cmd /K {cmd_name}")])
-                    .output()
-                    .map_err(|e| format!("打开终端失败:{e}"))?;
-                if !out.status.success() {
-                    return Err(format!("启动失败:{}", String::from_utf8_lossy(&out.stderr)));
-                }
-                Ok(())
+            let cmd_name = spec.0;
+            #[cfg(target_os = "windows")]
+            let out = Command::new("cmd")
+                .args(["/C", &format!("start \"猫猫 {cmd_name}\" cmd /K {cmd_name}")])
+                .output()
+                .map_err(|e| format!("打开终端失败:{e}"))?;
+            if !out.status.success() {
+                return Err(format!("启动失败:{}", String::from_utf8_lossy(&out.stderr)));
             }
+            Ok(())
         }
     }
 }
