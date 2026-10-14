@@ -712,7 +712,7 @@ fn logout() -> Result<(), String> {
 }
 
 // 注入到站点窗口的后退按钮:离开控制台页(收银台等)时出现,点击 history.back()
-const SITE_BACK_JS: &str = r#"
+const SITE_BACK_JS: &str = r##"
 (function(){
   if (window.__mmBack) return; window.__mmBack = true;
   function start(){
@@ -733,7 +733,7 @@ const SITE_BACK_JS: &str = r#"
   if (document.body) start();
   else document.addEventListener("DOMContentLoaded", start);
 })();
-"#;
+"##;
 
 // 在 App 内置浏览器窗口打开站点页面(充值/控制台/注册)
 #[tauri::command]
