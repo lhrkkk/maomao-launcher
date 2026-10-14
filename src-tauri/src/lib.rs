@@ -105,8 +105,9 @@ fn which_in_login_shell(cmd: &str) -> bool {
     }
     if let Ok(appdata) = env::var("APPDATA") { dirs.push(PathBuf::from(appdata).join("npm")); }
     if let Ok(local) = env::var("LOCALAPPDATA") {
-        dirs.push(PathBuf::from(local).join("Microsoft").join("WindowsApps"));
-        dirs.push(PathBuf::from(local).join("Programs"));
+        let l = PathBuf::from(local);
+        dirs.push(l.join("Microsoft").join("WindowsApps"));
+        dirs.push(l.join("Programs"));
     }
     if let Ok(out) = Command::new("powershell")
         .args(["-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('PATH','User')"])
