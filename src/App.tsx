@@ -82,6 +82,7 @@ function KeysPanel({ account, onUsed, onManage, say }: {
         <button className="btn ghost-btn" onClick={load} disabled={busy}>刷新</button>
         <button className="btn ghost-btn" onClick={onManage}>在网站上管理 ↗</button>
       </div>
+      <div className="keyslist">
       {tokens === null ? <div className="keyhint">加载中…</div>
         : tokens.length === 0 ? <div className="keyhint">还没有密钥，点「在网站上管理」创建一个 🐾</div>
         : tokens.map((t) => (
@@ -96,6 +97,7 @@ function KeysPanel({ account, onUsed, onManage, say }: {
               : <button className="btn krow-use" onClick={() => use(t.id, t.name)} disabled={busy}>使用</button>}
           </div>
         ))}
+      </div>
     </div>
   );
 }
