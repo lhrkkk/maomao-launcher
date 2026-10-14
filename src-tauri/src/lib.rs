@@ -487,6 +487,7 @@ fn list_tokens() -> Result<Vec<TokenEntry>, String> {
         .cloned()
         .unwrap_or_default()
         .into_iter()
+        .filter(|t| t.get("status").and_then(|v| v.as_i64()).unwrap_or(1) == 1) // 只列启用的
         .map(|t| TokenEntry {
             id: t.get("id").and_then(|v| v.as_i64()).unwrap_or(0),
             name: t.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
