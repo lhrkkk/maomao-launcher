@@ -71,6 +71,8 @@ pub struct LoginInfo {
     pub username: String,
     pub key_masked: String,
     pub key: String,
+    pub can_manage: bool,      // 有 access_token,可管理服务端密钥
+    pub token_id: Option<i64>, // 当前 key 对应的服务端令牌 id(手填 key 为 None)
 }
 fn p(rel: &[&str]) -> Result<PathBuf, String> {
     let mut path = home()?;
@@ -240,7 +242,9 @@ fn get_state() -> AppState {
         let u = v.get("username")?.as_str()?.to_string();
         let k = v.get("key_masked")?.as_str()?.to_string();
         let full = v.get("key").and_then(|x| x.as_str()).unwrap_or("").to_string();
-        Some(LoginInfo { username: u, key_masked: k, key: full })
+        let can_manage = v.get("access_token").and_then(|x| x.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
+        let token_id = v.get("token_id").and_then(|x| x.as_i64());
+        Some(LoginInfo { username: u, key_masked: k, key: full, can_manage, token_id })
     });
     AppState {
         tools: tools_spec()
@@ -419,7 +423,122 @@ fn save_key(key: String) -> Result<(), String> {
     let key = key.trim().to_string();
     if key.is_empty() { return Err("API Key 不能为空".into()); }
     let models = fetch_models();
-    apply_configs(&key, &models)
+    apply_configs(&key, &models)?;
+    // 与账号登录一致:记录接管状态,重开 app 自动接管;已登录账号则保留身份(密钥管理可用)
+    let (username, at) = stored_identity();
+    write_state(&username, &key, at.as_deref(), None)
+}
+
+// ---------- 密钥管理(账号登录后) ----------
+
+fn stored_state() -> Option<serde_json::Value> {
+    read_json(&state_path().ok()?)
+}
+
+/// (username, access_token):有账号登录记录则保留,否则视作纯 Key 模式
+fn stored_identity() -> (String, Option<String>) {
+    stored_state()
+        .map(|v| (
+            v.get("username").and_then(|x| x.as_str()).unwrap_or("API_KEY").to_string(),
+            v.get("access_token").and_then(|x| x.as_str()).map(|s| s.to_string()),
+        ))
+        .unwrap_or_else(|| ("API_KEY".into(), None))
+}
+
+fn stored_access_token() -> Result<String, String> {
+    stored_identity().1
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| "请先在「账号登录」页登录后再管理密钥".to_string())
+}
+
+fn write_state(username: &str, key: &str, access_token: Option<&str>, token_id: Option<i64>) -> Result<(), String> {
+    let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.to_string() };
+    let sp = state_path()?;
+    if let Some(dir) = sp.parent() { fs::create_dir_all(dir).ok(); }
+    let mut obj = serde_json::json!({ "username": username, "key_masked": mask, "key": key });
+    if let Some(t) = access_token { obj["access_token"] = serde_json::json!(t); }
+    if let Some(id) = token_id { obj["token_id"] = serde_json::json!(id); }
+    fs::write(&sp, serde_json::to_string_pretty(&obj).unwrap_or_default())
+        .map_err(|e| format!("写入记录失败:{e}"))
+}
+
+#[derive(Serialize, Clone)]
+pub struct TokenEntry {
+    pub id: i64,
+    pub name: String,
+    pub key_masked: String,
+    pub status: i64,
+}
+
+#[tauri::command]
+fn list_tokens() -> Result<Vec<TokenEntry>, String> {
+    let token = stored_access_token()?;
+    let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
+    let resp: serde_json::Value = client
+        .get(format!("{SITE}/api/token/?p=1&size=100"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send().map_err(|e| format!("查询令牌失败:{e}"))?
+        .json().map_err(|_| "令牌列表异常".to_string())?;
+    if !api_success(&resp) { return Err(format!("查询令牌失败:{}", api_error(&resp))); }
+    Ok(resp.pointer("/data/items")
+        .and_then(|i| i.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|t| TokenEntry {
+            id: t.get("id").and_then(|v| v.as_i64()).unwrap_or(0),
+            name: t.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            key_masked: t.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            status: t.get("status").and_then(|v| v.as_i64()).unwrap_or(1),
+        })
+        .collect())
+}
+
+#[tauri::command]
+fn create_token(name: String) -> Result<(), String> {
+    let token = stored_access_token()?;
+    let name = name.trim().to_string();
+    if name.is_empty() { return Err("密钥名称不能为空".into()); }
+    let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
+    let resp: serde_json::Value = client
+        .post(format!("{SITE}/api/token/"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&serde_json::json!({
+            "name": name,
+            "expired_time": -1,
+            "unlimited_quota": true,
+            "remain_quota": 0,
+            "model_limits_enabled": false,
+        }))
+        .send().map_err(|e| format!("创建密钥失败:{e}"))?
+        .json().map_err(|_| "创建响应异常".to_string())?;
+    if !api_success(&resp) { return Err(format!("创建密钥失败:{}", api_error(&resp))); }
+    Ok(())
+}
+
+#[tauri::command]
+fn use_token(id: i64) -> Result<String, String> {
+    let token = stored_access_token()?;
+    let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
+    let resp: serde_json::Value = client
+        .post(format!("{SITE}/api/token/{id}/key"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send().map_err(|e| format!("获取 Key 失败:{e}"))?
+        .json().map_err(|_| "Key 响应异常".to_string())?;
+    if !api_success(&resp) { return Err(format!("获取 Key 失败:{}", api_error(&resp))); }
+    let raw = match &resp["data"] {
+        serde_json::Value::String(s) => s.clone(),
+        v => v.get("key").and_then(|k| k.as_str()).unwrap_or("").to_string(),
+    };
+    if raw.is_empty() { return Err("站点未返回 Key".into()); }
+    let key = if raw.starts_with("sk-") { raw } else { format!("sk-{raw}") };
+    let models = fetch_models();
+    apply_configs(&key, &models)?;
+    // 保留账号身份,仅切换当前使用的 key
+    let (username, at) = stored_identity();
+    let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.clone() };
+    write_state(&username, &key, at.as_deref(), Some(id))?;
+    Ok(mask)
 }
 
 // ---------- 账号登录(方案①) ----------
@@ -526,13 +645,7 @@ fn login_and_setup(username: String, password: String) -> Result<String, String>
     let models = fetch_models();
     apply_configs(&key, &models)?;
     let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.clone() };
-    let sp = state_path()?;
-    if let Some(dir) = sp.parent() { fs::create_dir_all(dir).ok(); }
-    fs::write(&sp, serde_json::to_string_pretty(&serde_json::json!({
-        "username": username.trim(),
-        "key_masked": mask,
-        "key": key,
-    })).unwrap_or_default()).map_err(|e| format!("写入登录记录失败:{e}"))?;
+    write_state(username.trim(), &key, Some(&token), Some(id))?;
     Ok(mask)
 }
 
@@ -692,7 +805,7 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, logout, launch, open_url, open_site_page])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, logout, launch, open_url, open_site_page, list_tokens, create_token, use_token])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 

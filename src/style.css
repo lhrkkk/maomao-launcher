@@ -87,6 +87,29 @@ a { color: inherit; text-decoration: none; }
 .keyhint a { color: #d9714f; font-weight: 700; }
 .keyhint a:hover { text-decoration: underline; }
 
+/* 密钥管理面板 */
+.keysbox { display: flex; flex-direction: column; gap: 8px; }
+.keysnew { display: flex; gap: 8px; }
+.keysnew input {
+  flex: 1; min-width: 0; height: 38px; border: 1px solid #e7e2e8;
+  border-radius: 9px; padding: 0 10px; font-size: 12px; background: #fdfcfb;
+}
+.keysnew input:focus { border-color: #ff9b7d; outline: none; box-shadow: 0 0 0 3px #fff0e9; }
+.krow {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border: 1px solid #ece7ee; border-radius: 10px; padding: 9px 11px; background: #fdfcfb;
+}
+.krow.cur { border-color: #ffb397; background: #fff7f3; }
+.krow-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.krow-name { font-size: 12px; font-weight: 800; color: #312b4f; }
+.krow-off { font-style: normal; font-size: 10px; color: #b0654f; margin-left: 5px; }
+.krow-key {
+  font-size: 11px; color: #857f95; font-family: ui-monospace, SFMono-Regular, monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.krow-cur { font-size: 11px; font-weight: 800; color: #d9714f; white-space: nowrap; }
+.krow-use { height: 30px; padding: 0 13px; font-size: 11px; background: var(--dark); color: #fff; }
+
 .listwrap { flex: 1; min-height: 0; overflow-y: auto; margin-top: 4px; position: relative; }
 .group-title {
   font-size: 10px; font-weight: 800; letter-spacing: 1.4px;

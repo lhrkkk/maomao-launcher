@@ -26,13 +26,74 @@ interface Tool {
   configured: boolean;
   configurable: boolean;
 }
-interface LoginInfo { username: string; key_masked: string }
+interface LoginInfo { username: string; key_masked: string; key?: string; can_manage?: boolean; token_id?: number | null }
+interface TokenEntry { id: number; name: string; key_masked: string; status: number }
 
 const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
 const openInApp = (url: string) => invoke("open_site_page", { url });
 
+// 密钥管理面板:列出账号下所有 API Key,创建新 Key、切换当前使用的 Key
+function KeysPanel({ account, onUsed, say }: {
+  account: LoginInfo | null;
+  onUsed: () => Promise<void>;
+  say: (t: string) => void;
+}) {
+  const [tokens, setTokens] = useState<TokenEntry[] | null>(null);
+  const [newName, setNewName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    setBusy(true);
+    try { setTokens(await invoke<TokenEntry[]>("list_tokens")); }
+    catch (e) { say(`${e}`); setTokens([]); }
+    setBusy(false);
+  };
+  useEffect(() => { if (account?.can_manage) load(); }, []);
+
+  if (!account?.can_manage) {
+    return <div className="keyhint">密钥管理需要账号登录,请先在「账号登录」页登录,或直接在「直接填 Key」页粘贴现有 Key</div>;
+  }
+  const create = async () => {
+    const d = new Date();
+    const name = newName.trim() || `猫猫 ${d.getMonth() + 1}-${d.getDate()}`;
+    setBusy(true);
+    try { await invoke("create_token", { name }); setNewName(""); say("密钥已创建 🐾"); await load(); }
+    catch (e) { say(`${e}`); }
+    setBusy(false);
+  };
+  const use = async (id: number, name: string) => {
+    setBusy(true);
+    try { const m = await invoke<string>("use_token", { id }); say(`已切换到「${name}」${m} 🐾`); await onUsed(); }
+    catch (e) { say(`${e}`); }
+    setBusy(false);
+  };
+  return (
+    <div className="keysbox">
+      <div className="keysnew">
+        <input value={newName} placeholder="新密钥名称(可留空自动命名)"
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && create()} />
+        <button className="btn btn-save" onClick={create} disabled={busy}>创建</button>
+      </div>
+      {tokens === null ? <div className="keyhint">加载中…</div>
+        : tokens.length === 0 ? <div className="keyhint">还没有密钥,创建一个吧</div>
+        : tokens.map((t) => (
+          <div key={t.id} className={`krow ${t.id === account.token_id ? "cur" : ""}`}>
+            <div className="krow-main">
+              <span className="krow-name">{t.name}{t.status !== 1 && <em className="krow-off">已禁用</em>}</span>
+              <span className="krow-key">{t.key_masked}</span>
+            </div>
+            {t.id === account.token_id
+              ? <span className="krow-cur">✓ 使用中</span>
+              : <button className="btn krow-use" onClick={() => use(t.id, t.name)} disabled={busy}>使用</button>}
+          </div>
+        ))}
+    </div>
+  );
+}
+
 export default function App() {
-  const [tab, setTab] = useState<"login" | "key">("login");
+  const [tab, setTab] = useState<"login" | "keys" | "key">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [key, setKey] = useState("");
@@ -95,7 +156,7 @@ export default function App() {
     try {
       await invoke("logout");
       setAccount(null);
-      say("已退出账号,本机配置已还原");
+      say("已退出,本机配置已还原");
       await refresh();
     } catch (e) { say(`${e}`); }
   };
@@ -158,18 +219,30 @@ export default function App() {
       <div className="keycard">
         <div className="tabs">
           <button className={`tab ${tab === "login" ? "on" : ""}`} onClick={() => setTab("login")}>账号登录</button>
+          <button className={`tab ${tab === "keys" ? "on" : ""}`} onClick={() => setTab("keys")}>密钥</button>
           <button className={`tab ${tab === "key" ? "on" : ""}`} onClick={() => setTab("key")}>直接填 Key</button>
         </div>
 
-        {tab === "login" ? (
+        {tab === "keys" ? (
+          <>
+            {account && (
+              <div className="logged">
+                <span className="logged-user">{account.username === "API_KEY" ? "✓ 已配置 API Key" : `✓ 已登录 ${account.username}`}</span>
+                <span className="logged-key">{account.key_masked}</span>
+                <button className="btn-logout" onClick={doLogout}>退出并还原</button>
+              </div>
+            )}
+            <KeysPanel account={account} onUsed={refresh} say={say} />
+          </>
+        ) : tab === "login" ? (
           account ? (
             <>
               <div className="logged">
-                <span className="logged-user">✓ 已登录 {account.username}</span>
+                <span className="logged-user">{account.username === "API_KEY" ? "✓ 已配置 API Key" : `✓ 已登录 ${account.username}`}</span>
                 <span className="logged-key">{account.key_masked}</span>
-                <button className="btn-logout" onClick={doLogout}>退出登录</button>
+                <button className="btn-logout" onClick={doLogout}>退出并还原</button>
               </div>
-              <div className="keyhint">关闭本应用时配置会自动还原;重新打开将自动恢复接管</div>
+              <div className="keyhint">关闭本应用时配置会自动还原;重新打开将自动恢复接管;切换密钥请到「密钥」页</div>
             </>
           ) : (
           <>
