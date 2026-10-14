@@ -33,9 +33,10 @@ const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
 const openInApp = (url: string) => invoke("open_site_page", { url });
 
 // 密钥管理面板:列出账号下所有 API Key，创建新 Key、切换当前使用的 Key
-function KeysPanel({ account, onUsed, say }: {
+function KeysPanel({ account, onUsed, onManage, say }: {
   account: LoginInfo | null;
   onUsed: () => Promise<void>;
+  onManage: () => void;
   say: (t: string) => void;
 }) {
   const [tokens, setTokens] = useState<TokenEntry[] | null>(null);
@@ -69,6 +70,10 @@ function KeysPanel({ account, onUsed, say }: {
   };
   return (
     <div className="keysbox">
+      <div className="keysops">
+        <button className="btn ghost-btn" onClick={load} disabled={busy}>刷新</button>
+        <button className="btn ghost-btn" onClick={onManage}>在网站上管理 ↗</button>
+      </div>
       <div className="keysnew">
         <input value={newName} placeholder="新密钥名称(可留空自动命名)"
           onChange={(e) => setNewName(e.target.value)}
@@ -232,7 +237,7 @@ export default function App() {
                 <button className="btn-logout" onClick={doLogout}>退出并还原</button>
               </div>
             )}
-            <KeysPanel account={account} onUsed={refresh} say={say} />
+            <KeysPanel account={account} onUsed={refresh} onManage={() => { setPanelSrc(PANEL_HOME); setPanelOpen(true); }} say={say} />
           </>
         ) : tab === "login" ? (
           account ? (
