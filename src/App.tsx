@@ -40,7 +40,6 @@ function KeysPanel({ account, onUsed, onManage, say }: {
   say: (t: string) => void;
 }) {
   const [tokens, setTokens] = useState<TokenEntry[] | null>(null);
-  const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
@@ -54,14 +53,6 @@ function KeysPanel({ account, onUsed, onManage, say }: {
   if (!account?.can_manage) {
     return <div className="keyhint">密钥管理需要账号登录，请先在「账号登录」页登录，或直接在「直接填 Key」页粘贴现有 Key</div>;
   }
-  const create = async () => {
-    const d = new Date();
-    const name = newName.trim() || `猫猫 ${d.getMonth() + 1}-${d.getDate()}`;
-    setBusy(true);
-    try { await invoke("create_token", { name }); setNewName(""); say("密钥已创建 🐾"); await load(); }
-    catch (e) { say(`${e}`); }
-    setBusy(false);
-  };
   const use = async (id: number, name: string) => {
     setBusy(true);
     try { const m = await invoke<string>("use_token", { id }); say(`已切换到「${name}」${m} 🐾`); await onUsed(); }
@@ -74,14 +65,8 @@ function KeysPanel({ account, onUsed, onManage, say }: {
         <button className="btn ghost-btn" onClick={load} disabled={busy}>刷新</button>
         <button className="btn ghost-btn" onClick={onManage}>在网站上管理 ↗</button>
       </div>
-      <div className="keysnew">
-        <input value={newName} placeholder="新密钥名称(可留空自动命名)"
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && create()} />
-        <button className="btn btn-save" onClick={create} disabled={busy}>创建</button>
-      </div>
       {tokens === null ? <div className="keyhint">加载中…</div>
-        : tokens.length === 0 ? <div className="keyhint">还没有密钥，创建一个吧</div>
+        : tokens.length === 0 ? <div className="keyhint">还没有密钥，点「在网站上管理」创建一个 🐾</div>
         : tokens.map((t) => (
           <div key={t.id} className={`krow ${t.id === account.token_id ? "cur" : ""}`}>
             <div className="krow-main">
