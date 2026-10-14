@@ -30,8 +30,6 @@ interface LoginInfo { username: string; key_masked: string; key?: string; can_ma
 interface TokenEntry { id: number; name: string; key_masked: string; status: number; model_limits_enabled: boolean; model_limits: string }
 
 // 模型标签:无限制 = 全部;有限制 = 前 3 个 + 剩余数
-const statusLabel = (s: number) =>
-  s === 2 ? "已停用" : s === 3 ? "已过期" : s === 4 ? "已耗尽" : "不可用";
 function ModelTags({ t }: { t: TokenEntry }) {
   const list = t.model_limits_enabled
     ? t.model_limits.split(",").map((s) => s.trim()).filter(Boolean)
@@ -90,7 +88,7 @@ function KeysPanel({ account, onUsed, onManage, say }: {
         : tokens.map((t) => (
           <div key={t.id} className={`krow ${t.id === account.token_id ? "cur" : ""}`}>
             <div className="krow-main">
-              <span className="krow-name">{t.name}{t.status !== 1 && <em className="krow-off">{statusLabel(t.status)}</em>}</span>
+              <span className="krow-name">{t.name}</span>
               <span className="krow-key">{t.key_masked}</span>
               <ModelTags t={t} />
             </div>
