@@ -711,6 +711,30 @@ fn logout() -> Result<(), String> {
     Ok(())
 }
 
+// 注入到站点窗口的后退按钮:离开控制台页(收银台等)时出现,点击 history.back()
+const SITE_BACK_JS: &str = r#"
+(function(){
+  if (window.__mmBack) return; window.__mmBack = true;
+  function start(){
+    const b = document.createElement("button");
+    b.textContent = "←"; b.title = "后退";
+    Object.assign(b.style, {
+      position: "fixed", left: "12px", bottom: "16px", zIndex: 2147483647,
+      width: "38px", height: "38px", borderRadius: "50%", border: "0",
+      background: "rgba(49,43,79,.85)", color: "#fff", fontSize: "18px",
+      cursor: "pointer", display: "none", boxShadow: "0 4px 14px rgba(0,0,0,.25)"
+    });
+    b.onclick = function(){ history.back(); };
+    document.body.appendChild(b);
+    function upd(){ b.style.display = location.pathname.indexOf("/panel") === 0 ? "none" : "block"; }
+    upd();
+    window.addEventListener("pageshow", upd);
+  }
+  if (document.body) start();
+  else document.addEventListener("DOMContentLoaded", start);
+})();
+"#;
+
 // 在 App 内置浏览器窗口打开站点页面(充值/控制台/注册)
 #[tauri::command]
 fn open_site_page(app: tauri::AppHandle, url: String) -> Result<(), String> {
@@ -726,6 +750,7 @@ fn open_site_page(app: tauri::AppHandle, url: String) -> Result<(), String> {
         .title("猫猫 Token")
         .inner_size(1080.0, 760.0)
         .min_inner_size(640.0, 520.0)
+        .initialization_script(SITE_BACK_JS)
         .build()
         .map_err(|e| format!("打开窗口失败:{e}"))?;
     Ok(())
