@@ -27,7 +27,7 @@ fn backup_dir() -> Result<PathBuf, String> {
     p(&[".config", "maomao-launcher", "backups"])
 }
 
-/// 接管文件前备份原始版本(仅首次,保留用户最初状态)
+/// 接管文件前备份原始版本(仅首次，保留用户最初状态)
 fn takeover_backup(orig: &PathBuf) {
     let Ok(bdir) = backup_dir() else { return };
     let _ = fs::create_dir_all(&bdir);
@@ -71,7 +71,7 @@ pub struct LoginInfo {
     pub username: String,
     pub key_masked: String,
     pub key: String,
-    pub can_manage: bool,      // 有 access_token,可管理服务端密钥
+    pub can_manage: bool,      // 有 access_token，可管理服务端密钥
     pub token_id: Option<i64>, // 当前 key 对应的服务端令牌 id(手填 key 为 None)
 }
 fn p(rel: &[&str]) -> Result<PathBuf, String> {
@@ -98,7 +98,7 @@ fn which_in_login_shell(cmd: &str) -> bool {
 #[cfg(target_os = "windows")]
 fn which_in_login_shell(cmd: &str) -> bool {
     use std::env;
-    // GUI 进程 PATH 缺用户目录:where -> 常见安装位置 -> 注册表用户 PATH,三重查找
+    // GUI 进程 PATH 缺用户目录:where -> 常见安装位置 -> 注册表用户 PATH，三重查找
     let via_where = run_quiet(Command::new("cmd").args(["/C", &format!("where {cmd}")]))
         .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty())
         .unwrap_or(false);
@@ -318,7 +318,7 @@ fn apply_configs(key: &str, models: &[String]) -> Result<(), String> {
         v["env"]["ANTHROPIC_AUTH_TOKEN"] = serde_json::json!(key);
     })?;
 
-    // Codex:auth.json 整文件覆盖(纯 API Key 模式,清除 ChatGPT OAuth 残留)
+    // Codex:auth.json 整文件覆盖(纯 API Key 模式，清除 ChatGPT OAuth 残留)
     // 残留 auth_mode=chatgpt + tokens 会让 Codex 优先用 OAuth 令牌导致 401
     let codex_auth = { let pp = p(&[".codex", "auth.json"])?; takeover_backup(&pp); pp };
     if let Some(dir) = codex_auth.parent() {
@@ -332,7 +332,7 @@ fn apply_configs(key: &str, models: &[String]) -> Result<(), String> {
         .map(|s| s.as_str())
         .unwrap_or("glm-5.3");
 
-    // 模型目录:用官方模板条目做骨架,每个模型生成一条
+    // 模型目录:用官方模板条目做骨架，每个模型生成一条
     let catalog_path = p(&[".codex", "maomao-model-catalog.json"])?;
     let template: serde_json::Value = serde_json::from_str(
         include_str!("resources/codex_deepseek_catalog_template.json")
@@ -424,7 +424,7 @@ fn save_key(key: String) -> Result<(), String> {
     if key.is_empty() { return Err("API Key 不能为空".into()); }
     let models = fetch_models();
     apply_configs(&key, &models)?;
-    // 与账号登录一致:记录接管状态,重开 app 自动接管;已登录账号则保留身份(密钥管理可用)
+    // 与账号登录一致:记录接管状态，重开 app 自动接管;已登录账号则保留身份(密钥管理可用)
     let (username, at) = stored_identity();
     write_state(&username, &key, at.as_deref(), None)
 }
@@ -435,7 +435,7 @@ fn stored_state() -> Option<serde_json::Value> {
     read_json(&state_path().ok()?)
 }
 
-/// (username, access_token):有账号登录记录则保留,否则视作纯 Key 模式
+/// (username, access_token):有账号登录记录则保留，否则视作纯 Key 模式
 fn stored_identity() -> (String, Option<String>) {
     stored_state()
         .map(|v| (
@@ -534,7 +534,7 @@ fn use_token(id: i64) -> Result<String, String> {
     let key = if raw.starts_with("sk-") { raw } else { format!("sk-{raw}") };
     let models = fetch_models();
     apply_configs(&key, &models)?;
-    // 保留账号身份,仅切换当前使用的 key
+    // 保留账号身份，仅切换当前使用的 key
     let (username, at) = stored_identity();
     let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.clone() };
     write_state(&username, &key, at.as_deref(), Some(id))?;
@@ -578,11 +578,11 @@ fn login_and_setup(username: String, password: String) -> Result<String, String>
     let token = resp.pointer("/data/access_token")
         .and_then(|t| t.as_str())
         .filter(|t| !t.is_empty())
-        .ok_or("账号开启了二次验证或需要额外验证,请改用「直接填 Key」方式")?
+        .ok_or("账号开启了二次验证或需要额外验证，请改用「直接填 Key」方式")?
         .to_string();
     let auth_header = format!("Bearer {token}");
 
-    // 2) 查询已有同名令牌:有则复用,没有才创建
+    // 2) 查询已有同名令牌:有则复用，没有才创建
     let list_tokens = |client: &reqwest::blocking::Client| -> Result<Vec<serde_json::Value>, String> {
         let resp: serde_json::Value = client
             .get(format!("{SITE}/api/token/?p=1&size=100"))
@@ -624,7 +624,7 @@ fn login_and_setup(username: String, password: String) -> Result<String, String>
         }
         id = find_id(&list_tokens(&client)?);
     }
-    let id = id.ok_or("未找到令牌,请到控制台手动复制 Key")?;
+    let id = id.ok_or("未找到令牌，请到控制台手动复制 Key")?;
 
     // 4) 取完整 key
     let resp: serde_json::Value = client
@@ -679,7 +679,7 @@ fn remove_managed_toml(path: PathBuf) {
     }
 }
 
-/// 恢复所有被接管的文件到最初状态(有备份还原,无备份删除)
+/// 恢复所有被接管的文件到最初状态(有备份还原，无备份删除)
 fn restore_files() -> Result<(), String> {
     for rel in [
         (".claude", "settings.json"),
@@ -754,7 +754,7 @@ fn launch(id: String) -> Result<(), String> {
         }
         ToolKind::Cli => {
             if !which_in_login_shell(spec.0) {
-                return Err(format!("{} 未安装,请先参考官方文档安装", spec.1));
+                return Err(format!("{} 未安装，请先参考官方文档安装", spec.1));
             }
             #[cfg(target_os = "macos")]
             let out = Command::new("osascript").args(["-e", &format!(
@@ -767,7 +767,7 @@ fn launch(id: String) -> Result<(), String> {
             let out = {
                 use std::os::windows::process::CommandExt;
                 let mut c = Command::new("cmd");
-                // raw_arg 原样传给 cmd,避免 Rust 二次加引号把 start 的标题/命令切碎
+                // raw_arg 原样传给 cmd，避免 Rust 二次加引号把 start 的标题/命令切碎
                 c.raw_arg(format!("/C start \"猫猫 {cmd_name}\" cmd /K {cmd_name}"));
                 c.output()
             }.map_err(|e| format!("打开终端失败:{e}"))?;
@@ -850,7 +850,7 @@ pub fn run() {
         .build(&app)
         .expect("tray");
 
-    // 真正退出(Cmd+Q / 托盘退出)时还原配置;登录记录保留,下次启动自动重新接管
+    // 真正退出(Cmd+Q / 托盘退出)时还原配置;登录记录保留，下次启动自动重新接管
     // ExitRequested 与 Exit 双挂:Cmd+Q 在 macOS 上可能只触发其中之一
     app.run(|_handle, event| {
         match event {

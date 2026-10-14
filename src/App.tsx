@@ -32,7 +32,7 @@ interface TokenEntry { id: number; name: string; key_masked: string; status: num
 const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
 const openInApp = (url: string) => invoke("open_site_page", { url });
 
-// 密钥管理面板:列出账号下所有 API Key,创建新 Key、切换当前使用的 Key
+// 密钥管理面板:列出账号下所有 API Key，创建新 Key、切换当前使用的 Key
 function KeysPanel({ account, onUsed, say }: {
   account: LoginInfo | null;
   onUsed: () => Promise<void>;
@@ -51,7 +51,7 @@ function KeysPanel({ account, onUsed, say }: {
   useEffect(() => { if (account?.can_manage) load(); }, []);
 
   if (!account?.can_manage) {
-    return <div className="keyhint">密钥管理需要账号登录,请先在「账号登录」页登录,或直接在「直接填 Key」页粘贴现有 Key</div>;
+    return <div className="keyhint">密钥管理需要账号登录，请先在「账号登录」页登录，或直接在「直接填 Key」页粘贴现有 Key</div>;
   }
   const create = async () => {
     const d = new Date();
@@ -76,7 +76,7 @@ function KeysPanel({ account, onUsed, say }: {
         <button className="btn btn-save" onClick={create} disabled={busy}>创建</button>
       </div>
       {tokens === null ? <div className="keyhint">加载中…</div>
-        : tokens.length === 0 ? <div className="keyhint">还没有密钥,创建一个吧</div>
+        : tokens.length === 0 ? <div className="keyhint">还没有密钥，创建一个吧</div>
         : tokens.map((t) => (
           <div key={t.id} className={`krow ${t.id === account.token_id ? "cur" : ""}`}>
             <div className="krow-main">
@@ -141,12 +141,12 @@ export default function App() {
   };
 
   const login = async () => {
-    if (!username.trim() || !password) { say("请输入账号和密码,喵"); return; }
+    if (!username.trim() || !password) { say("请输入账号和密码，喵"); return; }
     setBusy(true);
     try {
       const mask = await invoke<string>("login_and_setup", { username, password });
       setUsername(""); setPassword("");
-      say(`登录成功,已创建并配置密钥 ${mask} 🐾`);
+      say(`登录成功，已创建并配置密钥 ${mask} 🐾`);
       await refresh();
     } catch (e) { say(`${e}`); }
     setBusy(false);
@@ -156,14 +156,14 @@ export default function App() {
     try {
       await invoke("logout");
       setAccount(null);
-      say("已退出,本机配置已还原");
+      say("已退出，本机配置已还原");
       await refresh();
     } catch (e) { say(`${e}`); }
   };
 
   const save = async () => {
     const k = key.trim();
-    if (!k) { say("请先填入 API Key,喵"); return; }
+    if (!k) { say("请先填入 API Key，喵"); return; }
     try {
       await invoke("save_key", { key: k });
       setKey("");
@@ -212,7 +212,7 @@ export default function App() {
         <span className="brand-icon">{CAT_LOGO}</span>
         <div>
           <div className="brand-name">猫猫 <em>Token</em></div>
-          <div className="brand-sub">一个 Key,喵定所有 AI · 一键启动</div>
+          <div className="brand-sub">一个 Key，喵定所有 AI · 一键启动</div>
         </div>
       </div>
 
