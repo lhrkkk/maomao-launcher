@@ -167,13 +167,20 @@ a { color: inherit; text-decoration: none; }
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-.tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+/* 分段控件:整体一个外框,选中项白色浮起,避免被误读成两个独立按钮 */
+.tabs {
+  display: flex; gap: 0; margin-bottom: 12px;
+  background: #efeaf1; border-radius: 11px; padding: 3px;
+}
 .tab {
-  flex: 1; border: 1px solid #e7e2e8; background: #fdfcfb;
-  border-radius: 9px; padding: 8px 0; font-size: 12px; font-weight: 800;
+  flex: 1; border: none; background: transparent;
+  border-radius: 8px; padding: 8px 0; font-size: 12px; font-weight: 800;
   color: #857f95; cursor: pointer; transition: all .15s;
 }
-.tab.on { background: var(--dark); color: #fff; border-color: var(--dark); }
+.tab.on {
+  background: #fff; color: #312b4f;
+  box-shadow: 0 1px 5px rgba(49, 43, 79, .18);
+}
 .loginrow { display: flex; gap: 8px; }
 .loginrow input {
   flex: 1; min-width: 0; height: 38px;

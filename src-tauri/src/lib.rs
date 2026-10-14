@@ -78,6 +78,12 @@ fn p(rel: &[&str]) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+#[cfg(target_os = "windows")]
+fn run_quiet(cmd: &mut Command) -> std::io::Result<std::process::Output> {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x0800_0000).output() // CREATE_NO_WINDOW:GUI 进程 spawn cmd/powershell 不闪黑窗
+}
+
 #[cfg(target_os = "macos")]
 fn which_in_login_shell(cmd: &str) -> bool {
     Command::new("zsh")
@@ -91,8 +97,7 @@ fn which_in_login_shell(cmd: &str) -> bool {
 fn which_in_login_shell(cmd: &str) -> bool {
     use std::env;
     // GUI 进程 PATH 缺用户目录:where -> 常见安装位置 -> 注册表用户 PATH,三重查找
-    let via_where = Command::new("cmd").args(["/C", &format!("where {cmd}")])
-        .output()
+    let via_where = run_quiet(Command::new("cmd").args(["/C", &format!("where {cmd}")]))
         .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty())
         .unwrap_or(false);
     if via_where { return true; }
@@ -109,9 +114,8 @@ fn which_in_login_shell(cmd: &str) -> bool {
         dirs.push(l.join("Microsoft").join("WindowsApps"));
         dirs.push(l.join("Programs"));
     }
-    if let Ok(out) = Command::new("powershell")
-        .args(["-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('PATH','User')"])
-        .output()
+    if let Ok(out) = run_quiet(Command::new("powershell")
+        .args(["-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('PATH','User')"]))
     {
         if out.status.success() {
             for seg in String::from_utf8_lossy(&out.stdout).split(';') {
@@ -624,8 +628,12 @@ fn launch(id: String) -> Result<(), String> {
             let out = Command::new("open").args(["-a", app.as_str()]).output()
                 .map_err(|e| format!("启动失败:{e}"))?;
             #[cfg(target_os = "windows")]
-            let out = Command::new("cmd").args(["/C", &format!("start \"\" \"{app}\"")]).output()
-                .map_err(|e| format!("启动失败:{e}"))?;
+            let out = {
+                use std::os::windows::process::CommandExt;
+                let mut c = Command::new("cmd");
+                c.raw_arg(format!("/C start \"\" \"{app}\""));
+                run_quiet(&mut c)
+            }.map_err(|e| format!("启动失败:{e}"))?;
             if !out.status.success() {
                 return Err(format!("启动 {app} 失败:{}", String::from_utf8_lossy(&out.stderr)));
             }
@@ -643,10 +651,13 @@ fn launch(id: String) -> Result<(), String> {
             #[cfg(target_os = "windows")]
             let cmd_name = spec.0;
             #[cfg(target_os = "windows")]
-            let out = Command::new("cmd")
-                .args(["/C", &format!("start \"猫猫 {cmd_name}\" cmd /K {cmd_name}")])
-                .output()
-                .map_err(|e| format!("打开终端失败:{e}"))?;
+            let out = {
+                use std::os::windows::process::CommandExt;
+                let mut c = Command::new("cmd");
+                // raw_arg 原样传给 cmd,避免 Rust 二次加引号把 start 的标题/命令切碎
+                c.raw_arg(format!("/C start \"猫猫 {cmd_name}\" cmd /K {cmd_name}"));
+                c.output()
+            }.map_err(|e| format!("打开终端失败:{e}"))?;
             if !out.status.success() {
                 return Err(format!("启动失败:{}", String::from_utf8_lossy(&out.stderr)));
             }
@@ -658,10 +669,14 @@ fn launch(id: String) -> Result<(), String> {
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    let out = Command::new("open").arg(&url).output().map_err(|e| format!("打开失败:{e}"))?;
+    Command::new("open").arg(&url).output().map_err(|e| format!("打开失败:{e}"))?;
     #[cfg(target_os = "windows")]
-    let out = Command::new("cmd").args(["/C", &format!("start \"\" \"{url}\"")]).output().map_err(|e| format!("打开失败:{e}"))?;
-    let _ = out;
+    {
+        use std::os::windows::process::CommandExt;
+        let mut c = Command::new("cmd");
+        c.raw_arg(format!("/C start \"\" \"{url}\""));
+        run_quiet(&mut c).map_err(|e| format!("打开失败:{e}"))?;
+    }
     Ok(())
 }
 

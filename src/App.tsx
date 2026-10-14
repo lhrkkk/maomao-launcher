@@ -202,7 +202,7 @@ export default function App() {
         )}
 
         <div className="quicklinks">
-          <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 · 控制台 ↗</a>
+          <a onClick={() => { setPanelSrc(PANEL_HOME); setPanelOpen(true); }}>充值 · 控制台</a>
           <span>·</span>
           <a onClick={() => openUrl("https://binaryworld.world/register")}>注册账号 ↗</a>
         </div>
