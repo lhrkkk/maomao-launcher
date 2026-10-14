@@ -614,14 +614,17 @@ fn launch(id: String) -> Result<(), String> {
                 spec.0
             )]).output().map_err(|e| format!("打开终端失败:{e}"))?;
             #[cfg(target_os = "windows")]
-            let out = Command::new("cmd")
-                .args(["/C", &format!("start \"猫猫 {spec.0}\" cmd /K {spec.0}")])
-                .output()
-                .map_err(|e| format!("打开终端失败:{e}"))?;
-            if !out.status.success() {
-                return Err(format!("启动失败:{}", String::from_utf8_lossy(&out.stderr)));
+            {
+                let cmd_name = spec.0;
+                let out = Command::new("cmd")
+                    .args(["/C", &format!("start \"猫猫 {cmd_name}\" cmd /K {cmd_name}")])
+                    .output()
+                    .map_err(|e| format!("打开终端失败:{e}"))?;
+                if !out.status.success() {
+                    return Err(format!("启动失败:{}", String::from_utf8_lossy(&out.stderr)));
+                }
+                Ok(())
             }
-            Ok(())
         }
     }
 }
