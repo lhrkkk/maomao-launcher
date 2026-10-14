@@ -468,6 +468,8 @@ pub struct TokenEntry {
     pub name: String,
     pub key_masked: String,
     pub status: i64,
+    pub model_limits_enabled: bool,
+    pub model_limits: String,
 }
 
 #[tauri::command]
@@ -490,6 +492,8 @@ fn list_tokens() -> Result<Vec<TokenEntry>, String> {
             name: t.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             key_masked: t.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             status: t.get("status").and_then(|v| v.as_i64()).unwrap_or(1),
+            model_limits_enabled: t.get("model_limits_enabled").and_then(|v| v.as_bool()).unwrap_or(false),
+            model_limits: t.get("model_limits").and_then(|v| v.as_str()).unwrap_or("").to_string(),
         })
         .collect())
 }

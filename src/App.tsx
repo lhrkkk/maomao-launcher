@@ -27,7 +27,24 @@ interface Tool {
   configurable: boolean;
 }
 interface LoginInfo { username: string; key_masked: string; key?: string; can_manage?: boolean; token_id?: number | null }
-interface TokenEntry { id: number; name: string; key_masked: string; status: number }
+interface TokenEntry { id: number; name: string; key_masked: string; status: number; model_limits_enabled: boolean; model_limits: string }
+
+// 模型标签:无限制 = 全部;有限制 = 前 3 个 + 剩余数
+function ModelTags({ t }: { t: TokenEntry }) {
+  const list = t.model_limits_enabled
+    ? t.model_limits.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+  return (
+    <div className="krow-models" title={t.model_limits_enabled ? list.join("、") : "该密钥可调用全部模型"}>
+      {list.length === 0
+        ? <span className="mtag all">全部模型</span>
+        : <>
+            {list.slice(0, 3).map((m) => <span key={m} className="mtag">{m}</span>)}
+            {list.length > 3 && <span className="mtag more">+{list.length - 3}</span>}
+          </>}
+    </div>
+  );
+}
 
 const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
 const openInApp = (url: string) => invoke("open_site_page", { url });
@@ -72,6 +89,7 @@ function KeysPanel({ account, onUsed, onManage, say }: {
             <div className="krow-main">
               <span className="krow-name">{t.name}{t.status !== 1 && <em className="krow-off">已禁用</em>}</span>
               <span className="krow-key">{t.key_masked}</span>
+              <ModelTags t={t} />
             </div>
             {t.id === account.token_id
               ? <span className="krow-cur">✓ 使用中</span>
