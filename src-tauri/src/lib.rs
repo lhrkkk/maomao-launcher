@@ -73,6 +73,7 @@ pub struct LoginInfo {
     pub key: String,
     pub can_manage: bool,      // 有 access_token，可管理服务端密钥
     pub token_id: Option<i64>, // 当前 key 对应的服务端令牌 id(手填 key 为 None)
+    pub access_token: String,  // 传给控制台弹窗同步登录态用
 }
 fn p(rel: &[&str]) -> Result<PathBuf, String> {
     let mut path = home()?;
@@ -244,7 +245,8 @@ fn get_state() -> AppState {
         let full = v.get("key").and_then(|x| x.as_str()).unwrap_or("").to_string();
         let can_manage = v.get("access_token").and_then(|x| x.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
         let token_id = v.get("token_id").and_then(|x| x.as_i64());
-        Some(LoginInfo { username: u, key_masked: k, key: full, can_manage, token_id })
+        let at = can_manage.then(|| v.get("access_token").and_then(|x| x.as_str()).unwrap_or("").to_string()).unwrap_or_default();
+        Some(LoginInfo { username: u, key_masked: k, key: full, can_manage, token_id, access_token: at })
     });
     AppState {
         tools: tools_spec()

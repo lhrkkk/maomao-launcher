@@ -26,7 +26,7 @@ interface Tool {
   configured: boolean;
   configurable: boolean;
 }
-interface LoginInfo { username: string; key_masked: string; key?: string; can_manage?: boolean; token_id?: number | null }
+interface LoginInfo { username: string; key_masked: string; key?: string; can_manage?: boolean; token_id?: number | null; access_token?: string }
 interface TokenEntry { id: number; name: string; key_masked: string; status: number; model_limits_enabled: boolean; model_limits: string }
 
 // 模型标签:无限制 = 全部;有限制 = 前 3 个 + 剩余数
@@ -113,6 +113,10 @@ export default function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelSrc, setPanelSrc] = useState("https://binaryworld.world/panel");
   const PANEL_HOME = "https://binaryworld.world/panel";
+  // 弹窗地址:已登录则携带令牌片段,控制台页识别后免再次登录(hash 不发往服务器)
+  const panelUrl = () => account?.access_token
+    ? `${PANEL_HOME}#mmat=${encodeURIComponent(account.access_token)}`
+    : PANEL_HOME;
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | undefined>(undefined);
 
@@ -242,7 +246,7 @@ export default function App() {
                 <button className="btn-logout" onClick={doLogout}>退出并还原</button>
               </div>
             )}
-            <KeysPanel account={account} onUsed={refresh} onManage={() => { setPanelSrc(PANEL_HOME); setPanelOpen(true); }} say={say} />
+            <KeysPanel account={account} onUsed={refresh} onManage={() => { setPanelSrc(panelUrl()); setPanelOpen(true); }} say={say} />
           </>
         ) : tab === "login" ? (
           account ? (
@@ -285,7 +289,7 @@ export default function App() {
         )}
 
         <div className="quicklinks">
-          <a onClick={() => { setPanelSrc(PANEL_HOME); setPanelOpen(true); }}>充值 · 控制台</a>
+          <a onClick={() => { setPanelSrc(panelUrl()); setPanelOpen(true); }}>充值 · 控制台</a>
           <span>·</span>
           <a onClick={() => openUrl("https://binaryworld.world/register")}>注册账号 ↗</a>
         </div>
@@ -308,7 +312,7 @@ export default function App() {
           <div className="panel-modal" onClick={(e) => e.stopPropagation()}>
             <div className="panel-modal-head">
               {panelSrc !== PANEL_HOME && (
-                <button className="panel-modal-back" onClick={() => setPanelSrc(PANEL_HOME)}>← 返回控制台</button>
+                <button className="panel-modal-back" onClick={() => setPanelSrc(panelUrl())}>← 返回控制台</button>
               )}
               <span className="panel-modal-title">🐾 {panelSrc === PANEL_HOME ? "猫猫 Token · 控制台" : "收银台"}</span>
               <button className="panel-modal-close" onClick={() => setPanelOpen(false)} aria-label="关闭">✕</button>
