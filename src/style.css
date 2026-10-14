@@ -292,36 +292,3 @@ a { color: inherit; text-decoration: none; }
 @keyframes fadein { from { opacity: 0 } to { opacity: 1 } }
 @keyframes pop { from { opacity: 0; transform: scale(.94) translateY(8px) } to { opacity: 1; transform: none } }
 
-.panel-modal {
-  width: min(96vw, 1020px);
-  height: min(92vh, 820px);
-  background: var(--paper);
-  border-radius: 18px;
-  overflow: hidden;
-  display: flex; flex-direction: column;
-  box-shadow: 0 28px 70px rgba(23,21,44,.32);
-  animation: pop .18s ease-out;
-}
-.panel-modal-head {
-  flex: none;
-  height: 46px;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 8px 0 18px;
-  background: #fff;
-  border-bottom: 1px solid var(--line);
-}
-.panel-modal-title { font-size: 13px; font-weight: 850; }
-.panel-modal-close {
-  border: 0; background: transparent; border-radius: 9px;
-  width: 30px; height: 30px; font-size: 13px; color: #857f95;
-  cursor: pointer;
-}
-.panel-modal-close:hover { background: #f2eff8; color: #443f57; }
-.panel-modal-frame { flex: 1; border: 0; width: 100%; background: var(--paper); }
-
-.panel-modal-back {
-  border: 1px solid #ece6e9; background: #fff; border-radius: 9px;
-  padding: 7px 11px; font-size: 11px; font-weight: 800; color: #7a7488;
-  cursor: pointer; margin-right: auto;
-}
-.panel-modal-back:hover { border-color: #c9bfae; }

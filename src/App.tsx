@@ -110,8 +110,6 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
   const [account, setAccount] = useState<LoginInfo | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [panelSrc, setPanelSrc] = useState("https://binaryworld.world/panel");
   const PANEL_HOME = "https://binaryworld.world/panel";
   // 弹窗地址:已登录则携带令牌片段,控制台页识别后免再次登录(hash 不发往服务器)
   const panelUrl = () => account?.access_token
@@ -137,15 +135,6 @@ export default function App() {
         }
       } catch {}
     })();
-  }, []);
-  useEffect(() => {
-    const onMsg = (e: MessageEvent) => {
-      if (e.data && e.data.type === "maomao-pay" && typeof e.data.url === "string") {
-        setPanelSrc(e.data.url);
-      }
-    };
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
   }, []);
 
   const say = (t: string) => {
@@ -246,7 +235,7 @@ export default function App() {
                 <button className="btn-logout" onClick={doLogout}>退出并还原</button>
               </div>
             )}
-            <KeysPanel account={account} onUsed={refresh} onManage={() => { setPanelSrc(panelUrl()); setPanelOpen(true); }} say={say} />
+            <KeysPanel account={account} onUsed={refresh} onManage={() => openInApp(panelUrl())} say={say} />
           </>
         ) : tab === "login" ? (
           account ? (
@@ -289,7 +278,7 @@ export default function App() {
         )}
 
         <div className="quicklinks">
-          <a onClick={() => { setPanelSrc(panelUrl()); setPanelOpen(true); }}>充值 · 控制台</a>
+          <a onClick={() => openInApp(panelUrl())}>充值 · 控制台 ↗</a>
           <span>·</span>
           <a onClick={() => openUrl("https://binaryworld.world/register")}>注册账号 ↗</a>
         </div>
@@ -306,25 +295,6 @@ export default function App() {
         <span>binaryworld.world</span>
         <span>猫猫 Token · Made with meow ♡</span>
       </div>
-
-      {panelOpen && (
-        <div className="modal-mask" onClick={() => setPanelOpen(false)}>
-          <div className="panel-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="panel-modal-head">
-              {panelSrc !== PANEL_HOME && (
-                <button className="panel-modal-back" onClick={() => setPanelSrc(panelUrl())}>← 返回控制台</button>
-              )}
-              <span className="panel-modal-title">🐾 {panelSrc === PANEL_HOME ? "猫猫 Token · 控制台" : "收银台"}</span>
-              <button className="panel-modal-close" onClick={() => setPanelOpen(false)} aria-label="关闭">✕</button>
-            </div>
-            <iframe
-              className="panel-modal-frame"
-              src={panelSrc}
-              title="猫猫 Token 控制台"
-            />
-          </div>
-        </div>
-      )}
 
       <div className={`toast ${toast ? "show" : ""}`} role="status">{toast}</div>
     </div>
