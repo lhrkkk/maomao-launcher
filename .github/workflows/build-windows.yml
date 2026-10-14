@@ -39,3 +39,18 @@ jobs:
           path: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
           if-no-files-found: error
+
+      - name: Package zip distribution
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe" | Select-Object -First 1
+          $name = "Maomao-Token-1.2.0-win-x64"
+          Copy-Item $exe.FullName "$env:TEMP\$name.exe"
+          Compress-Archive -Path "$env:TEMP\$name.exe" -DestinationPath "$PWD\$name.zip" -Force
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maomao-windows-zip
+          path: Maomao-Token-1.2.0-win-x64.zip
+          if-no-files-found: error
