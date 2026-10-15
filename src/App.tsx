@@ -308,19 +308,21 @@ export default function App() {
         {tab === "keys" ? (
           <>
             {account && (
-              <div className="logged">
-                <span className="logged-user">{account.username === "API_KEY" ? "✓ 已配置 API Key" : `✓ 已登录 ${account.username}`}</span>
-                <span className="logged-key">{account.key_masked}</span>
-                <button className="btn-logout" onClick={doLogout}>退出并还原</button>
-              </div>
-              {bal && (
-                <div className={`balrow ${bal.quota_usd < 1 ? "low" : ""}`}>
-                  <span>余额 <b>${bal.quota_usd.toFixed(2)}</b></span>
-                  {bal.quota_usd < 1
-                    ? <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 余额不足,去充值 ↗</a>
-                    : <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 ↗</a>}
+              <>
+                <div className="logged">
+                  <span className="logged-user">{account.username === "API_KEY" ? "✓ 已配置 API Key" : `✓ 已登录 ${account.username}`}</span>
+                  <span className="logged-key">{account.key_masked}</span>
+                  <button className="btn-logout" onClick={doLogout}>退出并还原</button>
                 </div>
-              )}
+                {bal && (
+                  <div className={`balrow ${bal.quota_usd < 1 ? "low" : ""}`}>
+                    <span>余额 <b>${bal.quota_usd.toFixed(2)}</b></span>
+                    {bal.quota_usd < 1
+                      ? <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 余额不足,去充值 ↗</a>
+                      : <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 ↗</a>}
+                  </div>
+                )}
+              </>
             )}
             <KeysPanel account={account} onUsed={refresh} onManage={() => openUrl("https://binaryworld.world/panel")} say={say} />
           </>
