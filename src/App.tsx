@@ -98,7 +98,7 @@ function KeysPanel({ account, onUsed, onManage, say }: {
         : (() => {
           const cur = tokens.find((t) => t.id === account.token_id) || tokens[0];
           return (
-            <div className={`ksel ${open ? "open" : ""}`} onClick={() => setOpen(!open)}>
+            <div className={`ksel ${open ? "open" : ""}`} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
               <div className="ksel-head">
                 <span className="krow-name">{cur.name}{cur.id === account.token_id ? " · 使用中" : ""}</span>
                 <ModelTags t={cur} />
