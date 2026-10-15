@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 const CAT_LOGO = (
   <svg width="30" height="30" viewBox="0 0 44 44" fill="none" aria-hidden="true">
@@ -135,6 +136,18 @@ export default function App() {
         }
       } catch {}
     })();
+    // 深链授权结果由 Rust 侧处理(deep_link_setup_impl),前端只收事件刷新
+    const unsubs: Array<() => void> = [];
+    (async () => {
+      try {
+        unsubs.push(await listen<string>("mm-auth-done", (e) => {
+          say(`授权成功,已配置密钥 ${e.payload} 🐾`);
+          refresh();
+        }));
+        unsubs.push(await listen<string>("mm-auth-error", (e) => say(e.payload)));
+      } catch {}
+    })();
+    return () => { unsubs.forEach((u) => u()); };
   }, []);
 
   const say = (t: string) => {
@@ -147,7 +160,7 @@ export default function App() {
     if (!username.trim() || !password) { say("请输入账号和密码，喵"); return; }
     setBusy(true);
     try {
-      const mask = await invoke<string>("login_and_setup", { username, password });
+      const mask = await invoke<string>("login_and_setup", { username, password, turnstile: "" });
       setUsername(""); setPassword("");
       say(`登录成功，已创建并配置密钥 ${mask} 🐾`);
       await refresh();
@@ -183,7 +196,6 @@ export default function App() {
     } catch (e) { say(`${e}`); }
   };
 
-  const anyConfigured = tools.some((t) => t.configured);
   const cli = tools.filter((t) => t.kind === "Cli");
   const desktop = tools.filter((t) => t.kind === "Desktop");
 
@@ -249,20 +261,13 @@ export default function App() {
             </>
           ) : (
           <>
-            <div className="loginrow">
-              <input placeholder="用户名 / 邮箱" value={username} spellCheck={false}
-                onChange={(e) => setUsername(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && login()} />
-              <input type="password" placeholder="密码" value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && login()} />
-              <button className="btn btn-save" disabled={busy} onClick={login}>
-                {busy ? "登录中…" : "登录"}
-              </button>
-            </div>
-            <div className="keyhint">
-              登录后自动创建专属 API Key 并配置全部工具{anyConfigured ? "(已有配置会被更新)" : ""}
-            </div>
+            <button
+              className="btn btn-save"
+              style={{ width: "100%", marginBottom: 12, padding: "14px 16px", fontSize: 14 }}
+              onClick={() => openUrl("https://binaryworld.world/launcher-auth")}
+            >
+              浏览器一键登录 ↗
+            </button>
           </>
           )
         ) : (

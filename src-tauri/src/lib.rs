@@ -566,16 +566,58 @@ fn api_error(v: &serde_json::Value) -> String {
     v.get("message").and_then(|m| m.as_str()).unwrap_or("未知错误").to_string()
 }
 
+/// 浏览器深链授权:网页端完成登录后通过 maomao://auth 回传 key
+fn deep_link_setup_impl(key: &str, username: &str) -> Result<String, String> {
+    let key = key.trim().to_string();
+    let username = username.trim().to_string();
+    if !key.starts_with("sk-") || key.len() < 12 {
+        return Err("授权数据无效，请在网页端重试".into());
+    }
+    let models = fetch_models();
+    apply_configs(&key, &models)?;
+    let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.clone() };
+    // 保留此前账号登录留下的 access_token 身份(如有);纯 Key 模式则记录用户名
+    let (_, at) = stored_identity();
+    write_state(if username.is_empty() { "API_KEY" } else { &username }, &key, at.as_deref(), None)?;
+    Ok(mask)
+}
+
 #[tauri::command]
-fn login_and_setup(username: String, password: String) -> Result<String, String> {
+fn deep_link_setup(key: String, username: String) -> Result<String, String> {
+    deep_link_setup_impl(&key, &username)
+}
+
+/// 处理 maomao://auth?key=…&user=… 深链:写配置并通知前端刷新
+fn handle_auth_urls(app: &tauri::AppHandle, urls: Vec<tauri::Url>) {
+    use tauri::Emitter;
+    for u in urls {
+        if u.host_str() != Some("auth") { continue; }
+        let get = |k: &str| u.query_pairs().find(|(n, _)| n == k).map(|(_, v)| v.to_string()).unwrap_or_default();
+        let (key, user) = (get("key"), get("user"));
+        if key.is_empty() { continue; }
+        match deep_link_setup_impl(&key, &user) {
+            Ok(mask) => { let _ = app.emit("mm-auth-done", mask); },
+            Err(e) => { let _ = app.emit("mm-auth-error", e); },
+        }
+    }
+}
+
+#[tauri::command]
+fn login_and_setup(username: String, password: String, turnstile: Option<String>) -> Result<String, String> {
     if username.trim().is_empty() || password.is_empty() {
         return Err("请输入账号和密码".into());
     }
     let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
 
     // 1) 登录:该版本 new-api 在响应 JSON 里返回 access_token(非 cookie 会话)
+    let ts = turnstile.unwrap_or_default();
+    let login_url = if ts.is_empty() {
+        format!("{SITE}/api/user/login")
+    } else {
+        format!("{SITE}/api/user/login?turnstile={ts}")
+    };
     let resp: serde_json::Value = client
-        .post(format!("{SITE}/api/user/login"))
+        .post(login_url)
         .json(&serde_json::json!({ "username": username.trim(), "password": password }))
         .send().map_err(|e| format!("连接站点失败:{e}"))?
         .json().map_err(|_| "站点响应异常".to_string())?;
@@ -837,7 +879,25 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, logout, launch, open_url, open_site_page, list_tokens, create_token, use_token])
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // 二次启动(Windows/Linux 常见):把 argv 里的深链转交主实例逻辑
+            use tauri::Manager;
+            let urls: Vec<tauri::Url> = argv.iter()
+                .filter_map(|s| tauri::Url::parse(s).ok())
+                .filter(|u| u.scheme() == "maomao")
+                .collect();
+            if !urls.is_empty() { handle_auth_urls(app, urls); }
+            if let Some(w) = app.get_webview_window("main") { let _ = w.set_focus(); }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
+        .setup(|app| {
+            use tauri_plugin_deep_link::DeepLinkExt;
+            let handle = app.handle().clone();
+            // macOS 冷启动 + 运行中唤起统一走这里
+            app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, open_site_page, list_tokens, create_token, use_token])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 
