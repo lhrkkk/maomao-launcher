@@ -501,6 +501,29 @@ fn list_tokens() -> Result<Vec<TokenEntry>, String> {
         .collect())
 }
 
+// ---------- 账户余额 ----------
+
+#[derive(Serialize)]
+pub struct Balance {
+    pub quota_usd: f64,  // 剩余额度(美元)
+    pub used_usd: f64,   // 累计已用(美元)
+}
+
+#[tauri::command]
+fn get_balance() -> Result<Balance, String> {
+    let token = stored_access_token()?;
+    let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
+    let resp: serde_json::Value = client
+        .get(format!("{SITE}/api/user/self"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send().map_err(|e| format!("查询失败:{e}"))?
+        .json().map_err(|_| "响应异常".to_string())?;
+    if !api_success(&resp) { return Err(format!("查询余额失败:{}", api_error(&resp))); }
+    let q = resp.pointer("/data/quota").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let u = resp.pointer("/data/used_quota").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    Ok(Balance { quota_usd: q / 500000.0, used_usd: u / 500000.0 })
+}
+
 #[tauri::command]
 fn create_token(name: String) -> Result<(), String> {
     let token = stored_access_token()?;
@@ -863,7 +886,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 

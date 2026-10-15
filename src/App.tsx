@@ -127,6 +127,7 @@ export default function App() {
   const [tab, setTab] = useState<"login" | "keys" | "key">("login");
   const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(null);
   const [upd, setUpd] = useState<Update | null>(null);
+  const [bal, setBal] = useState<{ quota_usd: number; used_usd: number } | null>(null);
   const [updPct, setUpdPct] = useState(-1);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -173,6 +174,12 @@ export default function App() {
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(""), 2600);
   };
+
+  const loadBalance = () =>
+    invoke<{ quota_usd: number; used_usd: number }>("get_balance")
+      .then(setBal)
+      .catch(() => setBal(null));
+  useEffect(() => { if (account?.can_manage) loadBalance(); else setBal(null); }, [account?.can_manage]);
 
   const checkUpdate = async (silent = true) => {
     try {
@@ -306,6 +313,14 @@ export default function App() {
                 <span className="logged-key">{account.key_masked}</span>
                 <button className="btn-logout" onClick={doLogout}>退出并还原</button>
               </div>
+              {bal && (
+                <div className={`balrow ${bal.quota_usd < 1 ? "low" : ""}`}>
+                  <span>余额 <b>${bal.quota_usd.toFixed(2)}</b></span>
+                  {bal.quota_usd < 1
+                    ? <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 余额不足,去充值 ↗</a>
+                    : <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 ↗</a>}
+                </div>
+              )}
             )}
             <KeysPanel account={account} onUsed={refresh} onManage={() => openUrl("https://binaryworld.world/panel")} say={say} />
           </>
@@ -317,6 +332,14 @@ export default function App() {
                 <span className="logged-key">{account.key_masked}</span>
                 <button className="btn-logout" onClick={doLogout}>退出并还原</button>
               </div>
+              {bal && (
+                <div className={`balrow ${bal.quota_usd < 1 ? "low" : ""}`}>
+                  <span>余额 <b>${bal.quota_usd.toFixed(2)}</b></span>
+                  {bal.quota_usd < 1
+                    ? <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 余额不足,去充值 ↗</a>
+                    : <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 ↗</a>}
+                </div>
+              )}
               <div className="keyhint">关闭本应用时配置会自动还原;重新打开将自动恢复接管;切换密钥请到「密钥」页</div>
             </>
           ) : (
