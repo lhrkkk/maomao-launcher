@@ -854,6 +854,8 @@ pub fn run() {
             if let Some(w) = app.get_webview_window("main") { let _ = w.set_focus(); }
         }))
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             use tauri_plugin_deep_link::DeepLinkExt;
             let handle = app.handle().clone();

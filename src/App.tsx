@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 const CAT_LOGO = (
   <svg width="30" height="30" viewBox="0 0 44 44" fill="none" aria-hidden="true">
@@ -59,6 +61,14 @@ function KeysPanel({ account, onUsed, onManage, say }: {
 }) {
   const [tokens, setTokens] = useState<TokenEntry[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [open]);
 
   const load = async () => {
     setBusy(true);
@@ -83,22 +93,32 @@ function KeysPanel({ account, onUsed, onManage, say }: {
         <button className="btn ghost-btn" onClick={load} disabled={busy}>刷新</button>
         <button className="btn ghost-btn" onClick={onManage}>在网站上管理 ↗</button>
       </div>
-      <div className="keyslist">
       {tokens === null ? <div className="keyhint">加载中…</div>
         : tokens.length === 0 ? <div className="keyhint">还没有密钥，点「在网站上管理」创建一个 🐾</div>
-        : tokens.map((t) => (
-          <div key={t.id} className={`krow ${t.id === account.token_id ? "cur" : ""}`}>
-            <div className="krow-main">
-              <span className="krow-name">{t.name}</span>
-              <span className="krow-key">{t.key_masked}</span>
-              <ModelTags t={t} />
+        : (() => {
+          const cur = tokens.find((t) => t.id === account.token_id) || tokens[0];
+          return (
+            <div className={`ksel ${open ? "open" : ""}`} onClick={() => setOpen(!open)}>
+              <div className="ksel-head">
+                <span className="krow-name">{cur.name}{cur.id === account.token_id ? " · 使用中" : ""}</span>
+                <ModelTags t={cur} />
+                <span className="ksel-caret" aria-hidden="true">⌄</span>
+              </div>
+              {open && (
+                <div className="ksel-list" onClick={(e) => e.stopPropagation()}>
+                  {tokens.map((t) => (
+                    <div key={t.id} className={`ksel-item ${t.id === account.token_id ? "cur" : ""}`}
+                      onClick={() => { setOpen(false); if (t.id !== account.token_id) use(t.id, t.name); }}>
+                      <span className="krow-name">{t.id === account.token_id ? "✓ " : ""}{t.name}</span>
+                      <span className="krow-key">{t.key_masked}</span>
+                      <ModelTags t={t} />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            {t.id === account.token_id
-              ? <span className="krow-cur">✓ 使用中</span>
-              : <button className="btn krow-use" onClick={() => use(t.id, t.name)} disabled={busy}>使用</button>}
-          </div>
-        ))}
-      </div>
+          );
+        })()}
     </div>
   );
 }
@@ -106,6 +126,8 @@ function KeysPanel({ account, onUsed, onManage, say }: {
 export default function App() {
   const [tab, setTab] = useState<"login" | "keys" | "key">("login");
   const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(null);
+  const [upd, setUpd] = useState<Update | null>(null);
+  const [updPct, setUpdPct] = useState(-1);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [key, setKey] = useState("");
@@ -150,6 +172,27 @@ export default function App() {
     setToast(t);
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(""), 2600);
+  };
+
+  const checkUpdate = async (silent = true) => {
+    try {
+      const u = await check();
+      if (u) setUpd(u);
+      else if (!silent) say("已是最新版本 🐾");
+    } catch { if (!silent) say("检查更新失败,请稍后再试"); }
+  };
+  useEffect(() => { checkUpdate(); }, []);
+  const applyUpdate = async () => {
+    if (!upd) return;
+    setUpdPct(0);
+    try {
+      await upd.downloadAndInstall((ev) => {
+        if (ev.event === "Started" && ev.data.contentLength) setUpdPct(1);
+        else if (ev.event === "Progress") setUpdPct((p) => Math.max(p, 1));
+        else if (ev.event === "Finished") setUpdPct(100);
+      });
+      await relaunch();
+    } catch (e) { setUpdPct(-1); say(`更新失败:${e}`); }
   };
 
   const login = async () => {
@@ -237,6 +280,14 @@ export default function App() {
         <div>
           <div className="brand-name">猫猫 <em>Token</em></div>
           <div className="brand-sub">一个 Key，喵定所有 AI · 一键启动</div>
+          {upd && (
+            <div className="updrow">
+              <span className="upd-text">🎉 新版本 v{upd.version}</span>
+              {updPct < 0
+                ? <button className="btn krow-use" onClick={applyUpdate}>立即更新</button>
+                : <span className="upd-pct">{updPct >= 100 ? "安装中…" : `下载中 ${updPct}%`}</span>}
+            </div>
+          )}
         </div>
       </div>
 
@@ -306,7 +357,7 @@ export default function App() {
       </div>
 
       <div className="footer">
-        <span>binaryworld.world</span>
+        <span>binaryworld.world · <a onClick={() => checkUpdate(false)}>检查更新</a></span>
         <span>猫猫 Token · Made with meow ♡</span>
       </div>
 

@@ -217,6 +217,40 @@ a { color: inherit; text-decoration: none; }
 .authcard-note { font-size: 11px; color: #9b8f83; }
 .authcard-acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 
+/* 自动更新条 */
+.updrow {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 8px 0 2px; padding: 8px 11px; border-radius: 10px;
+  background: #fff0e9; border: 1px solid #ffd2be;
+}
+.upd-text { font-size: 12px; font-weight: 800; color: #c06a4b; }
+.upd-pct { font-size: 11px; color: #c06a4b; font-weight: 700; }
+.footer a { cursor: pointer; text-decoration: underline; }
+
+/* 密钥下拉选择器 */
+.ksel { position: relative; cursor: pointer; }
+.ksel-head {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  border: 1px solid #ece7ee; border-radius: 10px; padding: 10px 12px;
+  background: #fdfcfb; flex-wrap: wrap;
+}
+.ksel.open .ksel-head { border-color: #ff9b7d; box-shadow: 0 0 0 3px #fff0e9; }
+.ksel-head .krow-name { font-size: 12px; font-weight: 800; color: #312b4f; }
+.ksel-caret { margin-left: auto; color: #9b8f83; font-size: 13px; flex-shrink: 0; }
+.ksel-list {
+  position: absolute; top: calc(100% + 5px); left: 0; right: 0; z-index: 30;
+  background: #fff; border: 1px solid #ece7ee; border-radius: 11px;
+  box-shadow: 0 14px 34px rgba(34,32,51,.16); padding: 5px;
+  display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto;
+}
+.ksel-item {
+  display: flex; flex-direction: column; gap: 3px; padding: 8px 9px;
+  border-radius: 8px;
+}
+.ksel-item:hover { background: #f7f3f6; }
+.ksel-item.cur { background: #fff0e9; }
+.ksel-item .krow-name { font-size: 12px; font-weight: 800; color: #312b4f; }
+
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* 分段控件:整体一个外框,选中项白色浮起,避免被误读成两个独立按钮 */
