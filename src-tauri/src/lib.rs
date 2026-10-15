@@ -566,8 +566,8 @@ fn api_error(v: &serde_json::Value) -> String {
     v.get("message").and_then(|m| m.as_str()).unwrap_or("未知错误").to_string()
 }
 
-/// 浏览器深链授权:网页端完成登录后通过 maomao://auth 回传 key
-fn deep_link_setup_impl(key: &str, username: &str) -> Result<String, String> {
+/// 浏览器深链授权:网页端确认后由前端调用写入(deep_link_setup),或旧深链路径处理
+fn deep_link_setup_impl(key: &str, username: &str, at: Option<&str>, token_id: Option<i64>) -> Result<String, String> {
     let key = key.trim().to_string();
     let username = username.trim().to_string();
     if !key.starts_with("sk-") || key.len() < 12 {
@@ -576,29 +576,38 @@ fn deep_link_setup_impl(key: &str, username: &str) -> Result<String, String> {
     let models = fetch_models();
     apply_configs(&key, &models)?;
     let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.clone() };
-    // 保留此前账号登录留下的 access_token 身份(如有);纯 Key 模式则记录用户名
-    let (_, at) = stored_identity();
-    write_state(if username.is_empty() { "API_KEY" } else { &username }, &key, at.as_deref(), None)?;
+    // 深链带回的 access_token 优先(密钥管理可用),否则沿用本地已有身份
+    let (_, old_at) = stored_identity();
+    let at = at.filter(|s| !s.is_empty()).map(|s| s.to_string()).or(old_at);
+    write_state(if username.is_empty() { "API_KEY" } else { &username }, &key, at.as_deref(), token_id)?;
     Ok(mask)
 }
 
 #[tauri::command]
-fn deep_link_setup(key: String, username: String) -> Result<String, String> {
-    deep_link_setup_impl(&key, &username)
+fn deep_link_setup(key: String, username: String, at: Option<String>, id: Option<i64>) -> Result<String, String> {
+    deep_link_setup_impl(&key, &username, at.as_deref(), id)
 }
 
-/// 处理 maomao://auth?key=…&user=… 深链:写配置并通知前端刷新
+/// 处理 maomao://auth?key=…&user=…&at=…&id=… 深链:弹确认由用户放行后才写入
+/// (任意网页都能发起该协议,不确认就接管等于允许第三方静默改写本机配置)
 fn handle_auth_urls(app: &tauri::AppHandle, urls: Vec<tauri::Url>) {
     use tauri::Emitter;
     for u in urls {
         if u.host_str() != Some("auth") { continue; }
         let get = |k: &str| u.query_pairs().find(|(n, _)| n == k).map(|(_, v)| v.to_string()).unwrap_or_default();
-        let (key, user) = (get("key"), get("user"));
-        if key.is_empty() { continue; }
-        match deep_link_setup_impl(&key, &user) {
-            Ok(mask) => { let _ = app.emit("mm-auth-done", mask); },
-            Err(e) => { let _ = app.emit("mm-auth-error", e); },
+        let key = get("key");
+        if !key.starts_with("sk-") || key.len() < 12 {
+            let _ = app.emit("mm-auth-error", "授权数据无效，请回到网页重试".to_string());
+            continue;
         }
+        let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.clone() };
+        let _ = app.emit("mm-auth-request", serde_json::json!({
+            "key": key,
+            "user": get("user"),
+            "at": get("at"),
+            "id": get("id").parse::<i64>().ok(),
+            "mask": mask,
+        }));
     }
 }
 
@@ -753,51 +762,6 @@ fn logout() -> Result<(), String> {
     Ok(())
 }
 
-// 注入到站点窗口的后退按钮:离开控制台页(收银台等)时出现,点击 history.back()
-const SITE_BACK_JS: &str = r##"
-(function(){
-  if (window.__mmBack) return; window.__mmBack = true;
-  function start(){
-    const b = document.createElement("button");
-    b.textContent = "←"; b.title = "后退";
-    Object.assign(b.style, {
-      position: "fixed", left: "12px", bottom: "16px", zIndex: 2147483647,
-      width: "38px", height: "38px", borderRadius: "50%", border: "0",
-      background: "rgba(49,43,79,.85)", color: "#fff", fontSize: "18px",
-      cursor: "pointer", display: "none", boxShadow: "0 4px 14px rgba(0,0,0,.25)"
-    });
-    b.onclick = function(){ history.back(); };
-    document.body.appendChild(b);
-    function upd(){ b.style.display = location.pathname.indexOf("/panel") === 0 ? "none" : "block"; }
-    upd();
-    window.addEventListener("pageshow", upd);
-  }
-  if (document.body) start();
-  else document.addEventListener("DOMContentLoaded", start);
-})();
-"##;
-
-// 在 App 内置浏览器窗口打开站点页面(充值/控制台/注册)
-#[tauri::command]
-fn open_site_page(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    use tauri::Manager;
-    let parsed: tauri::Url = url.parse().map_err(|e| format!("地址无效:{e}"))?;
-    if let Some(w) = app.get_webview_window("site") {
-        let js = format!("location.href = '{}'", parsed.as_str().replace('\'', ""));
-        let _ = w.eval(&js);
-        let _ = w.set_focus();
-        return Ok(());
-    }
-    tauri::WebviewWindowBuilder::new(&app, "site", tauri::WebviewUrl::External(parsed))
-        .title("猫猫 Token")
-        .inner_size(1080.0, 760.0)
-        .min_inner_size(640.0, 520.0)
-        .initialization_script(SITE_BACK_JS)
-        .build()
-        .map_err(|e| format!("打开窗口失败:{e}"))?;
-    Ok(())
-}
-
 // ---------- 启动与打开 ----------
 
 #[tauri::command]
@@ -897,7 +861,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, open_site_page, list_tokens, create_token, use_token])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 

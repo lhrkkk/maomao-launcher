@@ -29,6 +29,7 @@ interface Tool {
 }
 interface LoginInfo { username: string; key_masked: string; key?: string; can_manage?: boolean; token_id?: number | null; access_token?: string }
 interface TokenEntry { id: number; name: string; key_masked: string; status: number; model_limits_enabled: boolean; model_limits: string }
+interface PendingAuth { key: string; user: string; at: string; id: number | null; mask: string }
 
 // 模型标签:无限制 = 全部;有限制 = 前 3 个 + 剩余数
 function ModelTags({ t }: { t: TokenEntry }) {
@@ -48,7 +49,6 @@ function ModelTags({ t }: { t: TokenEntry }) {
 }
 
 const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
-const openInApp = (url: string) => invoke("open_site_page", { url });
 
 // 密钥管理面板:列出账号下所有 API Key，创建新 Key、切换当前使用的 Key
 function KeysPanel({ account, onUsed, onManage, say }: {
@@ -105,6 +105,7 @@ function KeysPanel({ account, onUsed, onManage, say }: {
 
 export default function App() {
   const [tab, setTab] = useState<"login" | "keys" | "key">("login");
+  const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [key, setKey] = useState("");
@@ -112,10 +113,6 @@ export default function App() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [account, setAccount] = useState<LoginInfo | null>(null);
   const PANEL_HOME = "https://binaryworld.world/panel";
-  // 弹窗地址:已登录则携带令牌片段,控制台页识别后免再次登录(hash 不发往服务器)
-  const panelUrl = () => account?.access_token
-    ? `${PANEL_HOME}#mmat=${encodeURIComponent(account.access_token)}`
-    : PANEL_HOME;
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | undefined>(undefined);
 
@@ -136,13 +133,12 @@ export default function App() {
         }
       } catch {}
     })();
-    // 深链授权结果由 Rust 侧处理(deep_link_setup_impl),前端只收事件刷新
+    // 深链授权:先弹确认(任意网页都能发 maomao:// 链接),用户放行才写入配置
     const unsubs: Array<() => void> = [];
     (async () => {
       try {
-        unsubs.push(await listen<string>("mm-auth-done", (e) => {
-          say(`授权成功,已配置密钥 ${e.payload} 🐾`);
-          refresh();
+        unsubs.push(await listen<PendingAuth | null>("mm-auth-request", (e) => {
+          if (e.payload?.key) setPendingAuth(e.payload);
         }));
         unsubs.push(await listen<string>("mm-auth-error", (e) => say(e.payload)));
       } catch {}
@@ -163,6 +159,19 @@ export default function App() {
       const mask = await invoke<string>("login_and_setup", { username, password, turnstile: "" });
       setUsername(""); setPassword("");
       say(`登录成功，已创建并配置密钥 ${mask} 🐾`);
+      await refresh();
+    } catch (e) { say(`${e}`); }
+    setBusy(false);
+  };
+
+  const confirmAuth = async () => {
+    const a = pendingAuth;
+    if (!a) return;
+    setPendingAuth(null);
+    setBusy(true);
+    try {
+      const mask = await invoke<string>("deep_link_setup", { key: a.key, username: a.user, at: a.at || null, id: a.id ?? null });
+      say(`授权成功，已配置密钥 ${mask} 🐾`);
       await refresh();
     } catch (e) { say(`${e}`); }
     setBusy(false);
@@ -247,7 +256,7 @@ export default function App() {
                 <button className="btn-logout" onClick={doLogout}>退出并还原</button>
               </div>
             )}
-            <KeysPanel account={account} onUsed={refresh} onManage={() => openInApp(panelUrl())} say={say} />
+            <KeysPanel account={account} onUsed={refresh} onManage={() => openUrl("https://binaryworld.world/panel")} say={say} />
           </>
         ) : tab === "login" ? (
           account ? (
@@ -283,7 +292,7 @@ export default function App() {
         )}
 
         <div className="quicklinks">
-          <a onClick={() => openInApp(panelUrl())}>充值 · 控制台 ↗</a>
+          <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 · 控制台 ↗</a>
           <span>·</span>
           <a onClick={() => openUrl("https://binaryworld.world/register")}>注册账号 ↗</a>
         </div>
@@ -300,6 +309,23 @@ export default function App() {
         <span>binaryworld.world</span>
         <span>猫猫 Token · Made with meow ♡</span>
       </div>
+
+      {pendingAuth && (
+        <div className="authmask" onClick={() => setPendingAuth(null)}>
+          <div className="authcard" onClick={(e) => e.stopPropagation()}>
+            <div className="authcard-title">🐾 网页授权请求</div>
+            <div className="authcard-body">
+              <b>{pendingAuth.user || "未知用户"}</b> 请求授权本机接管<br />
+              密钥 <code>{pendingAuth.mask}</code><br />
+              <span className="authcard-note">确认后写入全部客户端配置；非本人操作请点取消</span>
+            </div>
+            <div className="authcard-acts">
+              <button className="btn ghost-btn" onClick={() => setPendingAuth(null)}>取消</button>
+              <button className="btn btn-save" onClick={confirmAuth} disabled={busy}>确认接管</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className={`toast ${toast ? "show" : ""}`} role="status">{toast}</div>
     </div>
