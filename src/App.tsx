@@ -89,10 +89,6 @@ function KeysPanel({ account, onUsed, onManage, say }: {
   };
   return (
     <div className="keysbox">
-      <div className="keysops">
-        <button className="btn ghost-btn" onClick={load} disabled={busy}>刷新</button>
-        <button className="btn ghost-btn" onClick={onManage}>在网站上管理 ↗</button>
-      </div>
       {tokens === null ? <div className="keyhint">加载中…</div>
         : tokens.length === 0 ? <div className="keyhint">还没有密钥，点「在网站上管理」创建一个 🐾</div>
         : (() => {
@@ -119,6 +115,10 @@ function KeysPanel({ account, onUsed, onManage, say }: {
             </div>
           );
         })()}
+      <div className="keysops">
+        <button className="btn ghost-btn" onClick={load} disabled={busy}>刷新</button>
+        <button className="btn ghost-btn" onClick={onManage}>在网站上管理 ↗</button>
+      </div>
     </div>
   );
 }
