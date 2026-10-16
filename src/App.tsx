@@ -136,6 +136,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
   const [account, setAccount] = useState<LoginInfo | null>(null);
+  const [ready, setReady] = useState(false);
   const PANEL_HOME = "https://binaryworld.world/panel";
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | undefined>(undefined);
@@ -157,6 +158,7 @@ export default function App() {
           setTools(st2.tools);
         }
       } catch {}
+      setReady(true);
     })();
     // 深链授权:先弹确认(任意网页都能发 maomao:// 链接),用户放行才写入配置
     const unsubs: Array<() => void> = [];
@@ -288,7 +290,9 @@ export default function App() {
       </div>
 
       <div className="keycard">
-        {account ? (
+        {!ready ? (
+          <div className="loadrow"><div className="spin" /></div>
+        ) : account ? (
           <>
             <div className="logged">
               <span className="logged-user">{account.username === "API_KEY" ? "✓ 已配置 API Key" : `✓ 已登录 ${account.username}`}</span>
@@ -317,7 +321,7 @@ export default function App() {
             className="btn btn-hero"
             onClick={() => openUrl("https://binaryworld.world/launcher-auth")}
           >
-            <span className="hero-ico">🐾</span><span>一键登录 · 自动配置全部工具</span>
+            <span>一键登录 · 自动配置全部工具</span>
           </button>
         )}
 
