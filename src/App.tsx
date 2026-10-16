@@ -53,10 +53,9 @@ function ModelTags({ t }: { t: TokenEntry }) {
 const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
 
 // 密钥管理面板:列出账号下所有 API Key，创建新 Key、切换当前使用的 Key
-function KeysPanel({ account, onUsed, onManage, say }: {
+function KeysPanel({ account, onUsed, say }: {
   account: LoginInfo | null;
   onUsed: () => Promise<void>;
-  onManage: () => void;
   say: (t: string) => void;
 }) {
   const [tokens, setTokens] = useState<TokenEntry[] | null>(null);
@@ -115,10 +114,6 @@ function KeysPanel({ account, onUsed, onManage, say }: {
             </div>
           );
         })()}
-      <div className="keysops">
-        <button className="btn ghost-btn" onClick={load} disabled={busy}>刷新</button>
-        <button className="btn ghost-btn" onClick={onManage}>在网站上管理 ↗</button>
-      </div>
     </div>
   );
 }
@@ -291,18 +286,22 @@ export default function App() {
               <span className="logged-key">{account.key_masked}</span>
               <button className="btn-logout" onClick={doLogout}>退出并还原</button>
             </div>
-            <div className={`statrow ${bal && bal.quota_usd < 1 ? "low" : ""}`}>
-              {bal
-                ? <span className="bal">余额 <b>${bal.quota_usd.toFixed(2)}</b>
-                    {bal.quota_usd < 1 && <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 去充值 ↗</a>}</span>
-                : <span className="bal">余额 —</span>}
-              <span className="tk"><span className={`tk-dot ${tk ? "" : "off"}`} />{tk ? "接管中" : "已还原"}
+            <div className="statgrid">
+              <div className={`statcard balcard ${bal && bal.quota_usd < 1 ? "low" : ""}`}>
+                <span className="lbl">余额</span>
+                {bal
+                  ? <span className="val"><b>${bal.quota_usd.toFixed(2)}</b>
+                      {bal.quota_usd < 1 && <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 充值</a>}</span>
+                  : <span className="val">—</span>}
+              </div>
+              <div className="statcard tkcard">
+                <span className="lbl"><span className={`tk-dot ${tk ? "" : "off"}`} />{tk ? "接管中" : "已还原"}</span>
                 <label className="sw">
                   <input type="checkbox" checked={tk} onChange={toggleTk} /><i />
                 </label>
-              </span>
+              </div>
             </div>
-            <KeysPanel account={account} onUsed={refresh} onManage={() => openUrl("https://binaryworld.world/panel")} say={say} />
+            <KeysPanel account={account} onUsed={refresh} say={say} />
             <div className="keyhint">切换密钥即重新接管;退出应用自动还原;登录过期就重新一键登录</div>
           </>
         ) : (
