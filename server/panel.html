@@ -354,7 +354,7 @@ $('payBtn').addEventListener('click',async()=>{
 $('logoutBtn').addEventListener('click',async()=>{try{await ensureToken();await api('/api/user/auth/logout',{method:'POST'})}catch(_){}try{sessionStorage.removeItem('mmTk')}catch(_){}try{localStorage.removeItem('mmUser')}catch(_){}if(window.self!==window.top){TK=null;showEmbedLogin()}else{location.href='/login'}});
 init();
 })();
-</script></body></html>
+
 async function loadUsage(){
   const box = document.getElementById('usageBody');
   const t = TK || await ensureToken();
