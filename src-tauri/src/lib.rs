@@ -7,7 +7,7 @@ use std::time::Duration;
 const BASE_CLAUDE: &str = "https://binaryworld.world";
 const BASE_OPENAI: &str = "https://binaryworld.world/v1";
 const SITE: &str = "https://binaryworld.world";
-const TOKEN_NAME: &str = "猫猫启动器默认 key";
+const TOKEN_NAME: &str = "默认 Key";
 
 #[cfg(not(target_os = "windows"))]
 fn home() -> Result<PathBuf, String> {
