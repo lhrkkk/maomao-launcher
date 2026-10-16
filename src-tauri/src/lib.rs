@@ -246,7 +246,7 @@ fn get_state() -> AppState {
         let u = v.get("username")?.as_str()?.to_string();
         let k = v.get("key_masked")?.as_str()?.to_string();
         let full = v.get("key").and_then(|x| x.as_str()).unwrap_or("").to_string();
-        let can_manage = v.get("access_token").and_then(|x| x.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
+        let can_manage = !full.is_empty();
         let token_id = v.get("token_id").and_then(|x| x.as_i64());
         let at = can_manage.then(|| v.get("access_token").and_then(|x| x.as_str()).unwrap_or("").to_string()).unwrap_or_default();
         Some(LoginInfo { username: u, key_masked: k, key: full, can_manage, token_id, access_token: at })
@@ -539,6 +539,21 @@ fn stored_identity() -> (String, Option<String>) {
         .unwrap_or_else(|| ("API_KEY".into(), None))
 }
 
+fn stored_key() -> Result<String, String> {
+    stored_state()
+        .and_then(|v| v.get("key").and_then(|x| x.as_str()).map(|s| s.to_string()))
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| "尚未配置密钥,请先登录".to_string())
+}
+
+fn mm_get(path: &str) -> Result<reqwest::blocking::Response, String> {
+    let key = stored_key()?;
+    let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
+    client.get(format!("{SITE}{path}"))
+        .header("Authorization", format!("Bearer {key}"))
+        .send().map_err(|e| format!("连接站点失败:{e}"))
+}
+
 fn stored_access_token() -> Result<String, String> {
     stored_identity().1
         .filter(|t| !t.is_empty())
@@ -568,25 +583,19 @@ pub struct TokenEntry {
 
 #[tauri::command]
 fn list_tokens() -> Result<Vec<TokenEntry>, String> {
-    let token = stored_access_token()?;
-    let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
-    let resp = client
-        .get(format!("{SITE}/api/token/?p=1&size=100"))
-        .header("Authorization", format!("Bearer {token}"))
-        .send().map_err(|e| format!("查询令牌失败:{e}"))?;
-    if resp.status() == 401 { return Err("登录已过期,请重新在「账号登录」页登录".into()); }
-    let resp: serde_json::Value = resp.json().map_err(|_| "令牌列表异常".to_string())?;
-    if !api_success(&resp) { return Err(format!("查询令牌失败:{}", api_error(&resp))); }
-    Ok(resp.pointer("/data/items")
+    let resp = mm_get("/mm-admin/tokens")?;
+    if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
+    let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
+    if !api_success(&v) { return Err(format!("获取密钥列表失败:{}", api_error(&v))); }
+    Ok(v.pointer("/data")
         .and_then(|i| i.as_array())
         .cloned()
         .unwrap_or_default()
         .into_iter()
-        .filter(|t| t.get("status").and_then(|v| v.as_i64()).unwrap_or(1) == 1) // 只列启用的
         .map(|t| TokenEntry {
             id: t.get("id").and_then(|v| v.as_i64()).unwrap_or(0),
             name: t.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            key_masked: t.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            key_masked: t.get("key_masked").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             status: t.get("status").and_then(|v| v.as_i64()).unwrap_or(1),
             model_limits_enabled: t.get("model_limits_enabled").and_then(|v| v.as_bool()).unwrap_or(false),
             model_limits: t.get("model_limits").and_then(|v| v.as_str()).unwrap_or("").to_string(),
@@ -626,18 +635,14 @@ pub struct Balance {
 
 #[tauri::command]
 fn get_balance() -> Result<Balance, String> {
-    let token = stored_access_token()?;
-    let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
-    let resp = client
-        .get(format!("{SITE}/api/user/self"))
-        .header("Authorization", format!("Bearer {token}"))
-        .send().map_err(|e| format!("查询失败:{e}"))?;
-    if resp.status() == 401 { return Err("登录已过期,请重新登录".into()); }
-    let resp: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
-    if !api_success(&resp) { return Err(format!("查询余额失败:{}", api_error(&resp))); }
-    let q = resp.pointer("/data/quota").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let u = resp.pointer("/data/used_quota").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    Ok(Balance { quota_usd: q / 500000.0, used_usd: u / 500000.0 })
+    let resp = mm_get("/mm-admin/balance")?;
+    if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
+    let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
+    if !api_success(&v) { return Err(format!("查询余额失败:{}", api_error(&v))); }
+    Ok(Balance {
+        quota_usd: v.pointer("/data/quota_usd").and_then(|x| x.as_f64()).unwrap_or(0.0),
+        used_usd: v.pointer("/data/used_usd").and_then(|x| x.as_f64()).unwrap_or(0.0),
+    })
 }
 
 #[tauri::command]
@@ -664,22 +669,18 @@ fn create_token(name: String) -> Result<(), String> {
 
 #[tauri::command]
 fn use_token(id: i64) -> Result<String, String> {
-    let token = stored_access_token()?;
+    let key0 = stored_key()?;
     let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
-    let resp: serde_json::Value = client
-        .post(format!("{SITE}/api/token/{id}/key"))
-        .header("Authorization", format!("Bearer {token}"))
-        .send().map_err(|e| format!("获取 Key 失败:{e}"))?
-        .json().map_err(|_| "Key 响应异常".to_string())?;
-    if !api_success(&resp) { return Err(format!("获取 Key 失败:{}", api_error(&resp))); }
-    let raw = match &resp["data"] {
-        serde_json::Value::String(s) => s.clone(),
-        v => v.get("key").and_then(|k| k.as_str()).unwrap_or("").to_string(),
-    };
-    if raw.is_empty() { return Err("站点未返回 Key".into()); }
-    let key = if raw.starts_with("sk-") { raw } else { format!("sk-{raw}") };
+    let resp = client.post(format!("{SITE}/mm-admin/token-key"))
+        .header("Authorization", format!("Bearer {key0}"))
+        .json(&serde_json::json!({ "id": id }))
+        .send().map_err(|e| format!("获取 Key 失败:{e}"))?;
+    if resp.status() == 403 { return Err("Key 无效或该令牌不可用".into()); }
+    let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
+    if !api_success(&v) { return Err(format!("获取 Key 失败:{}", api_error(&v))); }
+    let key = v.pointer("/data/key").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    if !key.starts_with("sk-") { return Err("站点未返回有效 Key".into()); }
     apply_configs(&key)?;
-    // 保留账号身份，仅切换当前使用的 key
     let (username, at) = stored_identity();
     let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.clone() };
     write_state(&username, &key, at.as_deref(), Some(id))?;

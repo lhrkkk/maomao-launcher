@@ -77,8 +77,8 @@ function KeysPanel({ account, onUsed, say }: {
       const msg = `${e}`;
       say(msg);
       setTokens([]);
-      if (msg.includes("登录已过期")) {
-        say("登录已过期,已打开浏览器重新授权…");
+      if (msg.includes("重新登录") || msg.includes("Key 无效")) {
+        say("密钥已失效,已打开浏览器重新授权…");
         openUrl("https://binaryworld.world/launcher-auth");
       }
     }
