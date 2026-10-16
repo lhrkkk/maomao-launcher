@@ -124,14 +124,11 @@ function KeysPanel({ account, onUsed, onManage, say }: {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"login" | "keys">("login");
   const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(null);
   const [upd, setUpd] = useState<Update | null>(null);
   const [bal, setBal] = useState<{ quota_usd: number; used_usd: number } | null>(null);
   const [tk, setTk] = useState(true);
   const [updPct, setUpdPct] = useState(-1);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
   const [account, setAccount] = useState<LoginInfo | null>(null);
@@ -213,46 +210,6 @@ export default function App() {
     } catch (e) { setUpdPct(-1); say(`更新失败:${e}`); }
   };
 
-  // 账号密码登录的 Turnstile(站点已启用人机验证)
-  const TS_SITEKEY = "0x4AAAAAAFWAGUXaAA_a-Rqt";
-  const tsTokenRef = useRef("");
-  const mountTurnstile = () => {
-    const box = document.getElementById("mmTsBox");
-    if (!box || box.childElementCount > 0) return;
-    const render = () => {
-      try {
-        (window as any).turnstile?.render("#mmTsBox", {
-          sitekey: TS_SITEKEY,
-          callback: (t: string) => { tsTokenRef.current = t; },
-          "expired-callback": () => { tsTokenRef.current = ""; },
-          "error-callback": () => { tsTokenRef.current = ""; },
-        });
-      } catch {}
-    };
-    if ((window as any).turnstile) return render();
-    const sc = document.createElement("script");
-    sc.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-    sc.async = true;
-    sc.onload = render;
-    document.head.appendChild(sc);
-  };
-
-  const login = async () => {
-    if (!username.trim() || !password) { say("请输入账号和密码，喵"); return; }
-    if (!tsTokenRef.current) { say("请先完成上方人机验证"); return; }
-    setBusy(true);
-    try {
-      const mask = await invoke<string>("login_and_setup", { username, password, turnstile: tsTokenRef.current });
-      tsTokenRef.current = "";
-      try { (window as any).turnstile?.reset(); } catch {}
-      setUsername(""); setPassword("");
-      say(`登录成功，已配置密钥 ${mask} 🐾`);
-      await refresh();
-      loadBalance();
-    } catch (e) { say(`${e}`); }
-    setBusy(false);
-  };
-
   const confirmAuth = async () => {
     const a = pendingAuth;
     if (!a) return;
@@ -327,82 +284,42 @@ export default function App() {
       </div>
 
       <div className="keycard">
-        <div className="tabs">
-          <button className={`tab ${tab === "login" ? "on" : ""}`} onClick={() => setTab("login")}>账号登录</button>
-          <button className={`tab ${tab === "keys" ? "on" : ""}`} onClick={() => setTab("keys")}>密钥</button>
-        </div>
-
-        {tab === "keys" ? (
+        {account ? (
           <>
-            {account && (
-              <>
-                <div className="logged">
-                  <span className="logged-user">{account.username === "API_KEY" ? "✓ 已配置 API Key" : `✓ 已登录 ${account.username}`}</span>
-                  <span className="logged-key">{account.key_masked}</span>
-                  <button className="btn-logout" onClick={doLogout}>退出并还原</button>
-                </div>
-              </>
-            )}
+            <div className="logged">
+              <span className="logged-user">{account.username === "API_KEY" ? "✓ 已配置 API Key" : `✓ 已登录 ${account.username}`}</span>
+              <span className="logged-key">{account.key_masked}</span>
+              <button className="btn-logout" onClick={doLogout}>退出并还原</button>
+            </div>
+            <div className={`statrow ${bal && bal.quota_usd < 1 ? "low" : ""}`}>
+              {bal
+                ? <span className="bal">余额 <b>${bal.quota_usd.toFixed(2)}</b>
+                    {bal.quota_usd < 1 && <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 去充值 ↗</a>}</span>
+                : <span className="bal">余额 —</span>}
+              <span className="tk"><span className={`tk-dot ${tk ? "" : "off"}`} />{tk ? "接管中" : "已还原"}
+                <label className="sw">
+                  <input type="checkbox" checked={tk} onChange={toggleTk} /><i />
+                </label>
+              </span>
+            </div>
             <KeysPanel account={account} onUsed={refresh} onManage={() => openUrl("https://binaryworld.world/panel")} say={say} />
+            <div className="keyhint">切换密钥即重新接管;退出应用自动还原;登录过期就重新一键登录</div>
           </>
-        ) : tab === "login" ? (
-          account ? (
-            <>
-              <div className="logged">
-                <span className="logged-user">{account.username === "API_KEY" ? "✓ 已配置 API Key" : `✓ 已登录 ${account.username}`}</span>
-                <span className="logged-key">{account.key_masked}</span>
-                <button className="btn-logout" onClick={doLogout}>退出并还原</button>
-              </div>
-              <div className={`statrow ${bal && bal.quota_usd < 1 ? "low" : ""}`}>
-                {bal
-                  ? <span className="bal">余额 <b>${bal.quota_usd.toFixed(2)}</b>
-                      {bal.quota_usd < 1 && <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 去充值 ↗</a>}</span>
-                  : <span className="bal">余额 —</span>}
-                <span className="tk"><span className={`tk-dot ${tk ? "" : "off"}`} />{tk ? "接管中" : "已还原"}
-                  <label className="sw">
-                    <input type="checkbox" checked={tk} onChange={toggleTk} /><i />
-                  </label>
-                </span>
-              </div>
-              <div className="keyhint">切换密钥请到「密钥」页;退出应用会自动还原配置</div>
-            </>
-          ) : (
-          <>
-            <button
-              className="btn btn-save"
-              style={{ width: "100%", marginBottom: 12, padding: "14px 16px", fontSize: 14 }}
-              onClick={() => openUrl("https://binaryworld.world/launcher-auth")}
-            >
-              一键登录 · 自动配置全部工具 ↗
-            </button>
-            <details onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) mountTurnstile(); }}>
-              <summary style={{ fontSize: 12, color: "#8a8599", cursor: "pointer", padding: "2px 0" }}>
-                账号密码登录(登录过期时用这里重登)
-              </summary>
-              <div className="loginrow" style={{ marginTop: 10 }}>
-                <input placeholder="用户名 / 邮箱" value={username} spellCheck={false}
-                  onChange={(e) => setUsername(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && login()} />
-                <input type="password" placeholder="密码" value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && login()} />
-                <button className="btn btn-save" disabled={busy} onClick={login}>
-                  {busy ? "登录中…" : "登录"}
-                </button>
-              </div>
-              <div id="mmTsBox" style={{ display: "flex", justifyContent: "center", marginTop: 10, minHeight: 0 }} />
-            </details>
-          </>
-          )
-        ) : null}
-
-        {tab !== "keys" && (
-          <div className="quicklinks">
-            <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 · 控制台 ↗</a>
-            <span>·</span>
-            <a onClick={() => openUrl("https://binaryworld.world/register")}>注册账号 ↗</a>
-          </div>
+        ) : (
+          <button
+            className="btn btn-save"
+            style={{ width: "100%", padding: "14px 16px", fontSize: 14 }}
+            onClick={() => openUrl("https://binaryworld.world/launcher-auth")}
+          >
+            一键登录 · 自动配置全部工具 ↗
+          </button>
         )}
+
+        <div className="quicklinks">
+          <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 · 控制台 ↗</a>
+          <span>·</span>
+          <a onClick={() => openUrl("https://binaryworld.world/register")}>注册账号 ↗</a>
+        </div>
       </div>
 
       <div className="listwrap">

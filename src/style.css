@@ -261,7 +261,7 @@ a { color: inherit; text-decoration: none; }
 .statrow a { color: #b04a2f; font-weight: 700; cursor: pointer; margin-left: 6px; }
 .statrow.low { background: #fdeae4; border-color: #f7c8b6; }
 .statrow.low .bal b { color: #b04a2f; }
-.statrow .tk { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; color: #312b4f; }
+.statrow .tk { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; color: #312b4f; margin-left: auto; padding-left: 14px; border-left: 1px solid #ddd4e2; }
 .statrow .tk-dot { width: 8px; height: 8px; border-radius: 50%; background: #35b57c; display: inline-block; }
 .statrow:not(.low) .tk-dot.off { background: #b8b1c4; }
 .sw { position: relative; width: 42px; height: 23px; margin-left: auto; flex-shrink: 0; }
