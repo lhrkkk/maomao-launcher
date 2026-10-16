@@ -313,7 +313,6 @@ export default function App() {
                   <span className="logged-key">{account.key_masked}</span>
                   <button className="btn-logout" onClick={doLogout}>退出并还原</button>
                 </div>
-                {balRow}
               </>
             )}
             <KeysPanel account={account} onUsed={refresh} onManage={() => openUrl("https://binaryworld.world/panel")} say={say} />
@@ -326,19 +325,16 @@ export default function App() {
                 <span className="logged-key">{account.key_masked}</span>
                 <button className="btn-logout" onClick={doLogout}>退出并还原</button>
               </div>
-              {bal && (
-                <div className={`balrow ${bal.quota_usd < 1 ? "low" : ""}`}>
-                  <span>余额 <b>${bal.quota_usd.toFixed(2)}</b></span>
-                  {bal.quota_usd < 1
-                    ? <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 余额不足,去充值 ↗</a>
-                    : <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 ↗</a>}
-                </div>
-              )}
-              <div className={`tkrow ${tk ? "on" : ""}`}>
-                <span className="tk-dot" />{tk ? "接管中" : "已还原"}
-                <label className="sw">
-                  <input type="checkbox" checked={tk} onChange={toggleTk} /><i />
-                </label>
+              <div className={`statrow ${bal && bal.quota_usd < 1 ? "low" : ""}`}>
+                {bal
+                  ? <span className="bal">余额 <b>${bal.quota_usd.toFixed(2)}</b>
+                      {bal.quota_usd < 1 && <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 去充值 ↗</a>}</span>
+                  : <span className="bal">余额 —</span>}
+                <span className="tk"><span className={`tk-dot ${tk ? "" : "off"}`} />{tk ? "接管中" : "已还原"}
+                  <label className="sw">
+                    <input type="checkbox" checked={tk} onChange={toggleTk} /><i />
+                  </label>
+                </span>
               </div>
               <div className="keyhint">切换密钥请到「密钥」页;退出应用会自动还原配置</div>
             </>

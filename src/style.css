@@ -251,26 +251,19 @@ a { color: inherit; text-decoration: none; }
 .ksel-item.cur { background: #fff0e9; }
 .ksel-item .krow-name { font-size: 12px; font-weight: 800; color: #312b4f; }
 
-/* 账户余额条 */
-.balrow {
+/* 状态行:余额 + 接管开关同行 */
+.statrow {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin: 8px 0 0; padding: 8px 11px; border-radius: 10px;
+  margin: 10px 0 0; padding: 9px 11px; border-radius: 10px;
   background: #f4f1f8; border: 1px solid #e8e2f0; font-size: 12px; color: #5b5568;
 }
-.balrow b { color: #312b4f; font-size: 13px; }
-.balrow a { color: #d9714f; font-weight: 700; cursor: pointer; }
-.balrow.low { background: #fdeae4; border-color: #f7c8b6; }
-.balrow.low b { color: #b04a2f; }
-.balrow.low a { color: #b04a2f; }
-
-/* 接管开关 */
-.tkrow {
-  display: flex; align-items: center; gap: 8px; margin: 18px 0 0;
-  padding: 9px 11px; border-radius: 10px; background: #f4f1f8;
-  border: 1px solid #e8e2f0; font-size: 12px; font-weight: 800; color: #312b4f;
-}
-.tkrow .tk-dot { width: 8px; height: 8px; border-radius: 50%; background: #35b57c; display: inline-block; }
-.tkrow:not(.on) .tk-dot { background: #b8b1c4; }
+.statrow .bal b { color: #312b4f; font-size: 13px; }
+.statrow a { color: #b04a2f; font-weight: 700; cursor: pointer; margin-left: 6px; }
+.statrow.low { background: #fdeae4; border-color: #f7c8b6; }
+.statrow.low .bal b { color: #b04a2f; }
+.statrow .tk { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; color: #312b4f; }
+.statrow .tk-dot { width: 8px; height: 8px; border-radius: 50%; background: #35b57c; display: inline-block; }
+.statrow:not(.low) .tk-dot.off { background: #b8b1c4; }
 .sw { position: relative; width: 42px; height: 23px; margin-left: auto; flex-shrink: 0; }
 .sw input { display: none; }
 .sw i { position: absolute; inset: 0; background: #d8d2dc; border-radius: 99px; transition: .18s; cursor: pointer; }
