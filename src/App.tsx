@@ -317,7 +317,7 @@ export default function App() {
             className="btn btn-hero"
             onClick={() => openUrl("https://binaryworld.world/launcher-auth")}
           >
-            <span className="hero-ico">🐾</span> 一键登录 · 自动配置全部工具
+            <span className="hero-ico">🐾</span><span>一键登录 · 自动配置全部工具</span>
           </button>
         )}
 
