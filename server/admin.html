@@ -466,9 +466,9 @@
     });
     card.appendChild(outRow);
 
-    // 模型区:按渠道分子组
+    // 模型区:按模型聚合(一行一模型,渠道标签聚合全部提供者)
     const mh = document.createElement("div");
-    mh.innerHTML = `<div class="hint" style="margin-bottom:8px"><b>本组模型</b>(按渠道分组;点击模型编辑定价;本组价 = 单价 × ${ratio})</div>`;
+    mh.innerHTML = `<div class="hint" style="margin-bottom:8px"><b>本组模型</b>(点击行编辑定价;渠道标签上的 × 把该模型从对应渠道移除;本组价 = 单价 × ${ratio})</div>`;
     card.appendChild(mh);
     const usd1m = (e, which) => {
       const c = (e.configured || {});
@@ -478,28 +478,29 @@
       return which === "in" ? mr * 2 : mr * 2 * (cr != null ? cr : 1);
     };
     const f = (v) => v == null ? "—" : "$" + (v >= 0.1 ? v.toFixed(2) : v.toPrecision(2));
-    inCh.forEach((c) => {
-      const models = String(c.models || "").split(",").map((x) => x.trim()).filter(Boolean);
-      if (!models.length) return;
-      const blk = document.createElement("div");
-      blk.style.cssText = "border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fdfcfb";
-      const head = document.createElement("div");
-      head.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px";
-      head.innerHTML = `<b style="font-size:13px">${esc(c.name)}</b><span class="hint">${models.length} 个模型 · ${c.status === 1 ? "启用" : "停用"}</span>`;
-      blk.appendChild(head);
-      const mtab = document.createElement("table");
-      mtab.innerHTML = `<thead><tr><th>模型</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>本组输入价</th><th></th></tr></thead><tbody></tbody>`;
-      const mtb = mtab.querySelector("tbody");
-      models.sort().forEach((m) => {
-        const e = D.cfgMap[m] || { model_name: m, version: D.emptyVer, configured: {} };
-        const iu = usd1m(e, "in"), ou = usd1m(e, "out");
-        const tr = document.createElement("tr");
-        tr.style.cursor = "pointer";
-        tr.innerHTML = `<td><b>${esc(m)}</b></td><td>${f(iu)}</td><td>${f(ou)}</td>
-          <td style="color:#b04a2f;font-weight:700">${iu != null ? f(iu * ratio) : "—"}</td>
-          <td style="text-align:right"><button class="btn warn" style="height:26px" title="从渠道移除该模型">×</button></td>`;
-        tr.onclick = () => editPricing(e);
-        tr.querySelector("button").onclick = async (ev) => {
+    const byModel = new Map();
+    inCh.forEach((c) => String(c.models || "").split(",").map((x) => x.trim()).filter(Boolean).forEach((m) => {
+      if (!byModel.has(m)) byModel.set(m, []);
+      byModel.get(m).push(c);
+    }));
+    const mtab = document.createElement("table");
+    mtab.innerHTML = `<thead><tr><th>模型</th><th>提供渠道</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>本组输入价</th></tr></thead><tbody></tbody>`;
+    const mtb = mtab.querySelector("tbody");
+    [...byModel.keys()].sort().forEach((m) => {
+      const chs = byModel.get(m);
+      const e = D.cfgMap[m] || { model_name: m, version: D.emptyVer, configured: {} };
+      const iu = usd1m(e, "in"), ou = usd1m(e, "out");
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.innerHTML = `<td><b>${esc(m)}</b></td><td class="chips-td"></td>
+        <td>${f(iu)}</td><td>${f(ou)}</td>
+        <td style="color:#b04a2f;font-weight:700">${iu != null ? f(iu * ratio) : "—"}</td>`;
+      const chips = tr.querySelector(".chips-td");
+      chs.forEach((c) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.innerHTML = `${esc(c.name)}<span class="x" title="从 ${esc(c.name)} 移除 ${esc(m)}">×</span>`;
+        chip.querySelector(".x").onclick = async (ev) => {
           ev.stopPropagation();
           if (!confirm(`从「${c.name}」移除模型 ${m}?`)) return;
           const full = await api("/api/channel/" + c.id);
@@ -508,19 +509,21 @@
           ch.models = String(ch.models || "").split(",").map((x) => x.trim()).filter(Boolean).filter((x) => x !== m).join(",");
           delete ch.status;
           const d = await api("/api/channel/", { method: "PUT", body: JSON.stringify(ch) });
-          toast(d.success ? `已移除 ${m}` : d.message || "失败", !d.success);
+          toast(d.success ? `已从「${c.name}」移除 ${m}` : d.message || "失败", !d.success);
           if (d.success) loadWorkbench(box);
         };
-        mtb.appendChild(tr);
+        chips.appendChild(chip);
       });
-      blk.appendChild(mtab);
-      card.appendChild(blk);
+      tr.onclick = () => editPricing(e);
+      mtb.appendChild(tr);
     });
-    if (!inCh.some((c) => String(c.models || "").trim())) {
-      const empty = document.createElement("div"); empty.className = "msg"; empty.textContent = "本组暂无模型(先加入渠道)";
-      card.appendChild(empty);
+    if (!byModel.size) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="5" class="msg">本组暂无模型(先加入渠道)</td>`;
+      mtb.appendChild(tr);
     }
-    const modelSet = new Map();
+    card.appendChild(mtab);
+
 
     // 添加模型到组内渠道
     const addM = document.createElement("div"); addM.className = "editor"; addM.style.marginTop = "14px";
