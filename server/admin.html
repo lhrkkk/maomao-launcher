@@ -182,7 +182,7 @@
     const card = document.createElement("div"); card.className = "card";
     card.innerHTML = `
       <div class="hint" style="margin-bottom:10px">列表 = 全部启用渠道的模型;显示 — 的未单独定价,按默认倍率计费。倍率制:<b>模型倍率</b> 1 = $0.002/千 token,补全价 = 模型倍率 × <b>补全倍率</b>;<b>固定价格</b>($/次)设置后优先于倍率。留空 = 清除该项(回到默认)。改动即时生效。</div>
-      <input id="pkw" placeholder="过滤模型名…" style="height:34px;width:220px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px;margin-bottom:10px"><table><thead><tr><th>分组</th><th>模型</th><th>模型倍率</th><th>补全倍率</th><th>固定价格 $/次</th><th style="text-align:right">操作</th></tr></thead><tbody id="prows"></tbody></table>
+      <input id="pkw" placeholder="过滤模型名…" style="height:34px;width:220px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px;margin-bottom:10px"><table><thead><tr><th>模型</th><th>模型倍率</th><th>补全倍率</th><th>固定价格 $/次</th><th style="text-align:right">操作</th></tr></thead><tbody id="prows"></tbody></table>
       <div id="pedit"></div>
       <div class="editor" style="margin-top:14px">
         <div class="hint">新增模型定价</div>
