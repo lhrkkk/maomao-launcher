@@ -213,14 +213,42 @@ export default function App() {
     } catch (e) { setUpdPct(-1); say(`更新失败:${e}`); }
   };
 
+  // 账号密码登录的 Turnstile(站点已启用人机验证)
+  const TS_SITEKEY = "0x4AAAAAAFWAGUXaAA_a-Rqt";
+  const tsTokenRef = useRef("");
+  const mountTurnstile = () => {
+    const box = document.getElementById("mmTsBox");
+    if (!box || box.childElementCount > 0) return;
+    const render = () => {
+      try {
+        (window as any).turnstile?.render("#mmTsBox", {
+          sitekey: TS_SITEKEY,
+          callback: (t: string) => { tsTokenRef.current = t; },
+          "expired-callback": () => { tsTokenRef.current = ""; },
+          "error-callback": () => { tsTokenRef.current = ""; },
+        });
+      } catch {}
+    };
+    if ((window as any).turnstile) return render();
+    const sc = document.createElement("script");
+    sc.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    sc.async = true;
+    sc.onload = render;
+    document.head.appendChild(sc);
+  };
+
   const login = async () => {
     if (!username.trim() || !password) { say("请输入账号和密码，喵"); return; }
+    if (!tsTokenRef.current) { say("请先完成上方人机验证"); return; }
     setBusy(true);
     try {
-      const mask = await invoke<string>("login_and_setup", { username, password, turnstile: "" });
+      const mask = await invoke<string>("login_and_setup", { username, password, turnstile: tsTokenRef.current });
+      tsTokenRef.current = "";
+      try { (window as any).turnstile?.reset(); } catch {}
       setUsername(""); setPassword("");
-      say(`登录成功，已创建并配置密钥 ${mask} 🐾`);
+      say(`登录成功，已配置密钥 ${mask} 🐾`);
       await refresh();
+      loadBalance();
     } catch (e) { say(`${e}`); }
     setBusy(false);
   };
@@ -347,6 +375,23 @@ export default function App() {
             >
               一键登录 · 自动配置全部工具 ↗
             </button>
+            <details onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) mountTurnstile(); }}>
+              <summary style={{ fontSize: 12, color: "#8a8599", cursor: "pointer", padding: "2px 0" }}>
+                账号密码登录(登录过期时用这里重登)
+              </summary>
+              <div className="loginrow" style={{ marginTop: 10 }}>
+                <input placeholder="用户名 / 邮箱" value={username} spellCheck={false}
+                  onChange={(e) => setUsername(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && login()} />
+                <input type="password" placeholder="密码" value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && login()} />
+                <button className="btn btn-save" disabled={busy} onClick={login}>
+                  {busy ? "登录中…" : "登录"}
+                </button>
+              </div>
+              <div id="mmTsBox" style={{ display: "flex", justifyContent: "center", marginTop: 10, minHeight: 0 }} />
+            </details>
           </>
           )
         ) : null}
