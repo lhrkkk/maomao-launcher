@@ -167,11 +167,16 @@
 
   // ---------- 模型定价 ----------
   let pricingSnap = null;
+  let modelCosts = {}; // 模型 → 成本 $/1M(自维护账本)
+  async function loadCosts() {
+    try { const r = await fetch("/mm-admin/cost"); const d = await r.json(); if (d.success) modelCosts = d.data || {}; } catch (_) {}
+  }
   async function loadPricing(box) {
     box.innerHTML = `<div class="msg">加载中…</div>`;
     const d = await api("/api/option/model_pricing");
     if (!d.success) { box.innerHTML = `<div class="msg err">${esc(d.message || "加载失败")}</div>`; return; }
     pricingSnap = d.data || {};
+    await loadCosts();
     // 全量价目:已配置定价 ∪ 全部启用渠道的模型(未配置 = 未定价,按默认倍率计)
     const cfgMap = {};
     (pricingSnap.entries || []).forEach((e) => cfgMap[e.model_name] = e);
@@ -194,7 +199,7 @@
     const card = document.createElement("div"); card.className = "card";
     card.innerHTML = `
       <div class="hint" style="margin-bottom:10px">列表 = 全部启用渠道的模型;显示 — 的未单独定价,按默认倍率计费。倍率制:<b>模型倍率</b> 1 = $0.002/千 token,补全价 = 模型倍率 × <b>补全倍率</b>;<b>固定价格</b>($/次)设置后优先于倍率。留空 = 清除该项(回到默认)。改动即时生效。</div>
-      <input id="pkw" placeholder="过滤模型名…" style="height:34px;width:220px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px;margin-bottom:10px"><table><thead><tr><th>分组</th><th>模型</th><th>模型倍率</th><th>补全倍率</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>固定价格 $/次</th><th style="text-align:right">操作</th></tr></thead><tbody id="prows"></tbody></table>
+      <input id="pkw" placeholder="过滤模型名…" style="height:34px;width:220px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px;margin-bottom:10px"><table><thead><tr><th>分组</th><th>模型</th><th>模型倍率</th><th>补全倍率</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>成本 $/1M</th><th>毛利</th><th>固定价格 $/次</th><th style="text-align:right">操作</th></tr></thead><tbody id="prows"></tbody></table>
       <div id="pedit"></div>
       <div class="editor" style="margin-top:14px">
         <div class="hint">新增模型定价</div>
@@ -219,7 +224,10 @@
       tr.innerHTML = `<td style="font-size:12px;color:#6b6577">${esc([...(modelGroups[e.model_name] || [])].join(",") || "—")}</td>
         <td><b>${esc(e.model_name)}</b></td>
         <td>${fmt(c.ModelRatio)}</td><td>${fmt(c.CompletionRatio)}</td>
-        <td>${usdFmt(inUsd)}</td><td>${usdFmt(outUsd)}</td><td>${fmt(c.ModelPrice)}</td>
+        <td>${usdFmt(inUsd)}</td><td>${usdFmt(outUsd)}</td>
+        <td style="color:#6b6577">${modelCosts[e.model_name] != null ? "$" + modelCosts[e.model_name] : "—"}</td>
+        <td>${inUsd != null && modelCosts[e.model_name] != null ? ((inUsd - modelCosts[e.model_name]) / inUsd * 100).toFixed(0) + "%" : "—"}</td>
+        <td>${fmt(c.ModelPrice)}</td>
         <td><div class="ops" style="justify-content:flex-end"><button class="btn ghost p-edit">编辑</button></div></td>`;
       tr.querySelector(".p-edit").onclick = () => editPricing(e);
       tr.dataset.q = String(e.model_name).toLowerCase();
@@ -240,7 +248,7 @@
     const inp = (id, label, cur, w) => `<label style="font-size:12px;color:var(--muted)">${label}<input id="${id}" value="${cur === "" ? "" : cur}" placeholder="留空=清除" style="width:${w || 120}px;margin-left:6px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></label>`;
     ed.innerHTML = `<div class="editor">
       <div class="hint">「${esc(entry.model_name)}」 直接按单价定价($/1M tokens),保存时自动换算倍率</div>
-      <div class="row">${inp("pv-in", "输入价 $/1M", inP)}${inp("pv-out", "输出价 $/1M", outP, 130)}${inp("pv-p", "固定价格$/次(按次模型用)", c.ModelPrice ?? "", 190)}</div>
+      <div class="row">${inp("pv-in", "输入价 $/1M", inP)}${inp("pv-out", "输出价 $/1M", outP, 130)}${inp("pv-cost", "成本价 $/1M(上游)", modelCosts[entry.model_name] ?? "", 150)}${inp("pv-p", "固定价格$/次", c.ModelPrice ?? "", 150)}</div>
       <div class="row">
         <button class="btn" id="pv-save">保存</button>
         <button class="btn ghost" id="pv-cancel">取消</button>
@@ -260,8 +268,8 @@
     ed.querySelector("#pv-cancel").onclick = () => ed.innerHTML = "";
     ed.querySelector("#pv-save").onclick = async () => {
       const num = (id) => { const v = ed.querySelector(id).value.trim(); return v === "" ? null : Number(v); };
-      const inU = num("#pv-in"), outU = num("#pv-out"), price = num("#pv-p");
-      if (inU == null && outU == null && price == null) { toast("至少填一项", 1); return; }
+      const inU = num("#pv-in"), outU = num("#pv-out"), price = num("#pv-p"), cost = num("#pv-cost");
+      if (inU == null && outU == null && price == null && cost == null) { toast("至少填一项", 1); return; }
       if ([inU, outU, price].some((v) => v != null && (isNaN(v) || v < 0))) { toast("数值无效", 1); return; }
       if (inU != null && inU <= 0 && outU != null) { toast("输出价换算需要输入价大于 0", 1); return; }
       const pricing = {};
@@ -271,7 +279,17 @@
         if (outU != null) pricing.CompletionRatio = +(outU / inU).toFixed(8);
       }
       const btn = ed.querySelector("#pv-save"); btn.disabled = true;
-      const d = await api("/api/option/model_pricing", { method: "PATCH", body: JSON.stringify({ changes: [{ model_name: entry.model_name, expected_version: entry.version || "", pricing }] }) });
+      let d = { success: true };
+      if (Object.keys(pricing).length) {
+        d = await api("/api/option/model_pricing", { method: "PATCH", body: JSON.stringify({ changes: [{ model_name: entry.model_name, expected_version: entry.version || "", pricing }] }) });
+      }
+      if (d.success && cost != null) {
+        try {
+          const t = await ensureToken(true);
+          await fetch("/mm-admin/cost", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + (t || "") }, body: JSON.stringify({ [entry.model_name]: cost }) });
+          modelCosts[entry.model_name] = cost;
+        } catch (_) {}
+      }
       btn.disabled = false;
       if (d.success) { toast("已保存 🐾"); loadPricing(document.getElementById("tabbody")); }
       else toast(String(d.message || "保存失败").includes("changed") ? "配置已变化,已刷新,请重试" : d.message || "保存失败", 1);
@@ -381,6 +399,7 @@
       api("/api/channel/?p=1&page_size=100"),
       api("/api/option/model_pricing"),
     ]);
+    loadCosts();
     const list = Array.isArray(opt.data) ? opt.data : (opt.data && opt.data.items) || [];
     const byKey = {}; list.forEach((o) => byKey[o.key] = o.value);
     let ratios = {}, usable = {};
@@ -484,7 +503,7 @@
       byModel.get(m).push(c);
     }));
     const mtab = document.createElement("table");
-    mtab.innerHTML = `<thead><tr><th>模型</th><th>提供渠道</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>本组输入价</th></tr></thead><tbody></tbody>`;
+    mtab.innerHTML = `<thead><tr><th>模型</th><th>提供渠道</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>成本 $/1M</th><th>本组输入价</th><th>本组毛利</th></tr></thead><tbody></tbody>`;
     const mtb = mtab.querySelector("tbody");
     [...byModel.keys()].sort().forEach((m) => {
       const chs = byModel.get(m);
@@ -492,9 +511,14 @@
       const iu = usd1m(e, "in"), ou = usd1m(e, "out");
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
+      const cost = modelCosts[m];
+      const gIn = iu != null ? iu * ratio : null;
+      const margin = gIn != null && cost != null ? ((gIn - cost) / gIn * 100).toFixed(0) + "%" : "—";
       tr.innerHTML = `<td><b>${esc(m)}</b></td><td class="chips-td"></td>
         <td>${f(iu)}</td><td>${f(ou)}</td>
-        <td style="color:#b04a2f;font-weight:700">${iu != null ? f(iu * ratio) : "—"}</td>`;
+        <td style="color:#6b6577">${cost != null ? "$" + cost : "—"}</td>
+        <td style="color:#b04a2f;font-weight:700">${gIn != null ? f(gIn) : "—"}</td>
+        <td style="font-weight:700;color:${margin !== "—" && Number(margin.replace("%", "")) < 20 ? "#b04a2f" : "#1d7a4a"}">${margin}</td>`;
       const chips = tr.querySelector(".chips-td");
       chs.forEach((c) => {
         const chip = document.createElement("span");
@@ -519,7 +543,7 @@
     });
     if (!byModel.size) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="5" class="msg">本组暂无模型(先加入渠道)</td>`;
+      tr.innerHTML = `<td colspan="7" class="msg">本组暂无模型(先加入渠道)</td>`;
       mtb.appendChild(tr);
     }
     card.appendChild(mtab);
