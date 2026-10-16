@@ -152,11 +152,11 @@
 
     const tabs = document.createElement("div"); tabs.className = "tabs";
     const mk = (key, label) => { const b = document.createElement("button"); b.textContent = label; b.className = tab === key ? "on" : ""; b.onclick = () => { tab = key; renderFrame(who); }; tabs.appendChild(b); };
-    mk("dash", "看板"); mk("wb", "分组"); mk("users", "用户"); mk("channels", "上游渠道"); mk("pricing", "模型定价"); mk("models", "客户端模型配置");
+    mk("dash", "看板"); mk("wb", "分组"); mk("users", "用户"); mk("sales", "销售"); mk("channels", "上游渠道"); mk("pricing", "模型定价"); mk("models", "客户端模型配置");
     app.appendChild(tabs);
 
     const body = document.createElement("div"); body.id = "tabbody"; app.appendChild(body);
-    if (tab === "dash") loadDash(body); else if (tab === "wb") loadWorkbench(body); else if (tab === "users") loadUsers(body); else if (tab === "channels") loadChannels(body); else if (tab === "pricing") loadPricing(body); else loadModelCfg(body);
+    if (tab === "dash") loadDash(body); else if (tab === "wb") loadWorkbench(body); else if (tab === "users") loadUsers(body); else if (tab === "sales") loadSales(body); else if (tab === "channels") loadChannels(body); else if (tab === "pricing") loadPricing(body); else loadModelCfg(body);
   }
   async function boot() {
     await ensureToken(true); // 先静默续期,避免拿过期凭证请求在控制台报 401
@@ -731,6 +731,61 @@
       const tr = document.querySelector(`tr[data-uid="${u.id}"]`);
       if (tr) tr.children[3].innerHTML = `<b>$${d.data.quota_usd.toFixed(2)}</b>`;
     }
+  }
+
+  // ---------- 销售提成 ----------
+  async function loadSales(box) {
+    if (!box.firstElementChild) box.innerHTML = `<div class="msg">加载中…</div>`;
+    let d;
+    try { d = await api("/mm-admin/sales"); }
+    catch (e) { d = { success: false, message: "网络错误" }; }
+    if (!d.success) { box.innerHTML = `<div class="msg err">${esc(d.message || "加载失败")}</div>`; return; }
+    const rows = (d.data && d.data.rows) || [];
+    const card = document.createElement("div"); card.className = "card";
+    card.innerHTML = `<div class="hint" style="margin-bottom:10px"><b>销售提成</b>:用户通过销售的邀请链接注册(控制台个人设置里的邀请链接),其消费按费率提成给销售。待结 = 上次结算以来下线消费 × 费率;「结算」把待结金额打入销售余额并留档。</div>
+      <div class="savebar" style="justify-content:flex-start;margin:0 0 12px">
+        <label style="font-size:12px;color:var(--muted)">默认费率
+          <input id="s-defrate" value="${d.data.default_rate}" style="width:70px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font-size:13px;margin-left:6px"></label>
+        <button class="btn ghost" id="s-saverate" style="height:32px">保存默认费率</button>
+        <button class="btn" id="s-settle" style="height:32px">💰 结算全部待结</button>
+      </div>
+      <table><thead><tr><th>销售</th><th>下线</th><th>下线累计消费</th><th>待结消费</th><th>费率</th><th>本次将结</th><th>累计已结</th></tr></thead><tbody id="srows"></tbody></table>
+      <div id="shist" class="hint" style="margin-top:12px"></div>`;
+    box.innerHTML = "";
+    box.appendChild(card);
+    const tb = card.querySelector("#srows");
+    if (!rows.length) tb.innerHTML = `<tr><td colspan="7" class="msg">还没有邀请关系(用户通过邀请链接注册后出现在这里)</td></tr>`;
+    rows.forEach((r) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><b>${esc(r.display_name)}</b><div class="hint">@${esc(r.username)}</div></td>
+        <td>${r.invitees}</td>
+        <td>$${r.lifetime_usd.toFixed(2)}</td>
+        <td>$${r.pending_usd.toFixed(2)}</td>
+        <td><input class="s-rate" data-id="${r.id}" value="${r.rate}" style="width:64px;height:28px;border:1px solid var(--line);border-radius:7px;padding:0 7px;font-size:12px"></td>
+        <td style="font-weight:800;color:#1d7a4a">$${(r.pending_usd * r.rate).toFixed(2)}</td>
+        <td style="color:#6b6577">$${(r.paid_usd || 0).toFixed(2)}</td>`;
+      tb.appendChild(tr);
+    });
+    card.querySelector("#s-saverate").onclick = async () => {
+      const v = Number(card.querySelector("#s-defrate").value);
+      if (!(v >= 0 && v <= 1)) { toast("费率需在 0~1", 1); return; }
+      const d2 = await api("/mm-admin/sales/config", { method: "POST", body: JSON.stringify({ default_rate: v }) });
+      toast(d2.success ? "已保存默认费率" : d2.message || "失败", !d2.success);
+    };
+    card.querySelector("#s-settle").onclick = async () => {
+      const rates = {};
+      card.querySelectorAll(".s-rate").forEach((i) => { const v = Number(i.value); if (v >= 0 && v <= 1) rates[i.dataset.id] = v; });
+      if (!confirm("把全部待结提成打入销售余额?(按各行当前费率结算)")) return;
+      const btn = card.querySelector("#s-settle"); btn.disabled = true;
+      const d2 = await api("/mm-admin/sales/settle", { method: "POST", body: JSON.stringify({ rates }) });
+      btn.disabled = false;
+      if (d2.success) {
+        const st = d2.data.settled || [];
+        const total = st.reduce((a, x) => a + x.paid_usd, 0);
+        toast(st.length ? `已结算 ${st.length} 位销售,共 $${total.toFixed(2)} 🐾` : "没有待结的提成", 0);
+        loadSales(box);
+      } else toast(d2.message || "结算失败", 1);
+    };
   }
 
   // ---------- 渠道 ----------
