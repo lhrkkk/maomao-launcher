@@ -4,7 +4,7 @@
 header.site-nav{position:sticky;top:0;z-index:50;background:rgba(250,248,245,.94);backdrop-filter:blur(14px);border-bottom:1px solid #ece8e9;height:76px}.nav-inner{height:100%;display:flex;gap:22px;align-items:center}.brand{display:inline-flex;align-items:center;gap:10px;white-space:nowrap}.brand-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:14px;background:var(--peach);box-shadow:0 6px 20px #ff957633}.wordmark{font-size:20px;font-weight:900;letter-spacing:-.7px}.wordmark em{font-style:normal;color:#ee795c}.links{margin-left:auto;display:flex;gap:24px;align-items:center}.links a{font-size:13px;font-weight:700;color:#656174}.links a:hover{color:#6c60d4}.who{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:800}.who .dot{width:8px;height:8px;border-radius:50%;background:#58c08d;box-shadow:0 0 0 4px #d9f3e6}
 main{padding:42px 0 80px}
 .hero-row{display:flex;align-items:end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:26px}.hero-row h1{font-size:clamp(30px,3.6vw,44px);letter-spacing:-1.8px;margin:0;font-weight:900}.hero-row .sub{color:var(--muted);font-size:14px;margin-top:8px}
-.grid{display:grid;grid-template-columns:360px 1fr;gap:18px;align-items:start}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:18px;align-items:start}
 .grid > div > .card + .card, .grid > div > details + .card { margin-top: 18px; }
 .card{background:var(--white);border:1px solid var(--stroke);border-radius:22px;box-shadow:var(--shadow)}
 .card-h{padding:22px 24px 16px;border-bottom:1px solid #f1ecf0;display:flex;align-items:center;justify-content:space-between;gap:12px}.card-h h2{margin:0;font-size:17px;letter-spacing:-.5px}
@@ -357,10 +357,12 @@ init();
 
 async function loadUsage(){
   const box = document.getElementById('usageBody');
-  const t = TK || await ensureToken();
+  let t = await ensureToken(true);
+  const fetchUsage = () => fetch('/mm-admin/usage', { headers: { Authorization: 'Bearer ' + (t || '') } });
   let d;
   try {
-    const r = await fetch('/mm-admin/usage', { headers: { Authorization: 'Bearer ' + (t || '') } });
+    let r = await fetchUsage();
+    if (r.status === 403 || r.status === 401) { t = await ensureToken(true); r = await fetchUsage(); }
     d = await r.json().catch(() => ({ success: false }));
   } catch (_) { d = { success: false }; }
   if (!d.success || !d.data) {
