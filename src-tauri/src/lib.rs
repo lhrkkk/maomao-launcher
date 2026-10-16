@@ -235,6 +235,7 @@ fn read_json(path: &PathBuf) -> Option<serde_json::Value> {
 pub struct AppState {
     pub tools: Vec<ToolInfo>,
     pub login: Option<LoginInfo>,
+    pub takeover: bool,
 }
 
 #[tauri::command]
@@ -264,6 +265,9 @@ fn get_state() -> AppState {
         })
         .collect(),
         login,
+        takeover: read_json(&state_path().unwrap_or_default())
+            .and_then(|v| v.get("takeover").and_then(|x| x.as_bool()))
+            .unwrap_or(true),
     }
 }
 
@@ -478,11 +482,12 @@ pub struct TokenEntry {
 fn list_tokens() -> Result<Vec<TokenEntry>, String> {
     let token = stored_access_token()?;
     let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
-    let resp: serde_json::Value = client
+    let resp = client
         .get(format!("{SITE}/api/token/?p=1&size=100"))
         .header("Authorization", format!("Bearer {token}"))
-        .send().map_err(|e| format!("查询令牌失败:{e}"))?
-        .json().map_err(|_| "令牌列表异常".to_string())?;
+        .send().map_err(|e| format!("查询令牌失败:{e}"))?;
+    if resp.status() == 401 { return Err("登录已过期,请重新在「账号登录」页登录".into()); }
+    let resp: serde_json::Value = resp.json().map_err(|_| "令牌列表异常".to_string())?;
     if !api_success(&resp) { return Err(format!("查询令牌失败:{}", api_error(&resp))); }
     Ok(resp.pointer("/data/items")
         .and_then(|i| i.as_array())
@@ -501,6 +506,29 @@ fn list_tokens() -> Result<Vec<TokenEntry>, String> {
         .collect())
 }
 
+// ---------- 接管开关(翻墙软件式:关=立即还原配置,登录记录保留) ----------
+
+#[tauri::command]
+fn takeover(app: tauri::AppHandle, on: bool) -> Result<(), String> {
+    let st = stored_state().ok_or("尚未登录或保存过 Key")?;
+    let key = st.get("key").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    if key.is_empty() { return Err("尚未配置密钥,请先登录".into()); }
+    if on {
+        let models = fetch_models();
+        apply_configs(&key, &models)?;
+    } else {
+        restore_files()?;
+    }
+    let mut obj = st.clone();
+    obj["takeover"] = serde_json::json!(on);
+    if let Ok(sp) = state_path() {
+        let _ = fs::write(&sp, serde_json::to_string_pretty(&obj).unwrap_or_default());
+    }
+    use tauri::Emitter;
+    let _ = app.emit("mm-takeover", on);
+    Ok(())
+}
+
 // ---------- 账户余额 ----------
 
 #[derive(Serialize)]
@@ -513,11 +541,12 @@ pub struct Balance {
 fn get_balance() -> Result<Balance, String> {
     let token = stored_access_token()?;
     let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
-    let resp: serde_json::Value = client
+    let resp = client
         .get(format!("{SITE}/api/user/self"))
         .header("Authorization", format!("Bearer {token}"))
-        .send().map_err(|e| format!("查询失败:{e}"))?
-        .json().map_err(|_| "响应异常".to_string())?;
+        .send().map_err(|e| format!("查询失败:{e}"))?;
+    if resp.status() == 401 { return Err("登录已过期,请重新登录".into()); }
+    let resp: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
     if !api_success(&resp) { return Err(format!("查询余额失败:{}", api_error(&resp))); }
     let q = resp.pointer("/data/quota").and_then(|v| v.as_f64()).unwrap_or(0.0);
     let u = resp.pointer("/data/used_quota").and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -886,7 +915,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 

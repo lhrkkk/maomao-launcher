@@ -79,7 +79,7 @@ function KeysPanel({ account, onUsed, onManage, say }: {
   useEffect(() => { if (account?.can_manage) load(); }, []);
 
   if (!account?.can_manage) {
-    return <div className="keyhint">密钥管理需要账号登录，请先在「账号登录」页登录，或直接在「直接填 Key」页粘贴现有 Key</div>;
+    return <div className="keyhint">密钥管理需要账号登录，请先在「账号登录」页登录，重新登录后即可管理密钥</div>;
   }
   const use = async (id: number, name: string) => {
     setBusy(true);
@@ -124,14 +124,14 @@ function KeysPanel({ account, onUsed, onManage, say }: {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"login" | "keys" | "key">("login");
+  const [tab, setTab] = useState<"login" | "keys">("login");
   const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(null);
   const [upd, setUpd] = useState<Update | null>(null);
   const [bal, setBal] = useState<{ quota_usd: number; used_usd: number } | null>(null);
+  const [tk, setTk] = useState(true);
   const [updPct, setUpdPct] = useState(-1);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
   const [account, setAccount] = useState<LoginInfo | null>(null);
@@ -140,18 +140,19 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined);
 
   const refresh = () =>
-    invoke<{ tools: Tool[]; login: LoginInfo | null }>("get_state")
-      .then((s) => { setTools(s.tools); setAccount(s.login); })
+    invoke<{ tools: Tool[]; login: LoginInfo | null; takeover: boolean }>("get_state")
+      .then((s) => { setTools(s.tools); setAccount(s.login); setTk(s.takeover !== false); })
       .catch(() => {});
   useEffect(() => {
     (async () => {
       try {
-        const st = await invoke<{ tools: Tool[]; login: LoginInfo | null }>("get_state");
+        const st = await invoke<{ tools: Tool[]; login: LoginInfo | null; takeover: boolean }>("get_state");
         setTools(st.tools);
         setAccount(st.login);
-        if (st.login?.key) {
+        setTk(st.takeover !== false);
+        if (st.login?.key && st.takeover !== false) {
           await invoke("save_key", { key: st.login.key }); // 重新接管
-          const st2 = await invoke<{ tools: Tool[]; login: LoginInfo | null }>("get_state");
+          const st2 = await invoke<{ tools: Tool[]; login: LoginInfo | null; takeover: boolean }>("get_state");
           setTools(st2.tools);
         }
       } catch {}
@@ -173,6 +174,16 @@ export default function App() {
     setToast(t);
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(""), 2600);
+  };
+
+  const toggleTk = async () => {
+    const next = !tk;
+    setTk(next);
+    try {
+      await invoke("takeover", { on: next });
+      say(next ? "已接管,全部客户端已配置 🐾" : "已还原,本机配置恢复原样");
+      await refresh();
+    } catch (e) { setTk(!next); say(`${e}`); }
   };
 
   const loadBalance = () =>
@@ -236,17 +247,6 @@ export default function App() {
     } catch (e) { say(`${e}`); }
   };
 
-  const save = async () => {
-    const k = key.trim();
-    if (!k) { say("请先填入 API Key，喵"); return; }
-    try {
-      await invoke("save_key", { key: k });
-      setKey("");
-      say("配置已写入全部客户端 🐾");
-      await refresh();
-    } catch (e) { say(`${e}`); }
-  };
-
   const launch = async (t: Tool) => {
     if (t.configurable && !t.configured) { say("请先登录或保存 API Key"); return; }
     try {
@@ -302,7 +302,6 @@ export default function App() {
         <div className="tabs">
           <button className={`tab ${tab === "login" ? "on" : ""}`} onClick={() => setTab("login")}>账号登录</button>
           <button className={`tab ${tab === "keys" ? "on" : ""}`} onClick={() => setTab("keys")}>密钥</button>
-          <button className={`tab ${tab === "key" ? "on" : ""}`} onClick={() => setTab("key")}>直接填 Key</button>
         </div>
 
         {tab === "keys" ? (
@@ -342,7 +341,13 @@ export default function App() {
                     : <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 ↗</a>}
                 </div>
               )}
-              <div className="keyhint">关闭本应用时配置会自动还原;重新打开将自动恢复接管;切换密钥请到「密钥」页</div>
+              <div className={`tkrow ${tk ? "on" : ""}`}>
+                <span className="tk-dot" />{tk ? "接管中" : "已还原"}
+                <label className="sw">
+                  <input type="checkbox" checked={tk} onChange={toggleTk} /><i />
+                </label>
+              </div>
+              <div className="keyhint">切换密钥请到「密钥」页;退出应用会自动还原配置</div>
             </>
           ) : (
           <>
@@ -351,21 +356,11 @@ export default function App() {
               style={{ width: "100%", marginBottom: 12, padding: "14px 16px", fontSize: 14 }}
               onClick={() => openUrl("https://binaryworld.world/launcher-auth")}
             >
-              浏览器一键登录 ↗
+              一键登录 · 自动配置全部工具 ↗
             </button>
           </>
           )
-        ) : (
-          <>
-            <div className="keyrow">
-              <input type="password" placeholder="sk-..." value={key} spellCheck={false}
-                onChange={(e) => setKey(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && save()} />
-              <button className="btn btn-save" onClick={save}>保存</button>
-            </div>
-            <div className="keyhint">已有 Key?粘贴保存即可</div>
-          </>
-        )}
+        ) : null}
 
         {tab !== "keys" && (
           <div className="quicklinks">
