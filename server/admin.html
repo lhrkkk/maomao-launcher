@@ -194,7 +194,7 @@
     const card = document.createElement("div"); card.className = "card";
     card.innerHTML = `
       <div class="hint" style="margin-bottom:10px">列表 = 全部启用渠道的模型;显示 — 的未单独定价,按默认倍率计费。倍率制:<b>模型倍率</b> 1 = $0.002/千 token,补全价 = 模型倍率 × <b>补全倍率</b>;<b>固定价格</b>($/次)设置后优先于倍率。留空 = 清除该项(回到默认)。改动即时生效。</div>
-      <input id="pkw" placeholder="过滤模型名…" style="height:34px;width:220px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px;margin-bottom:10px"><table><thead><tr><th>分组</th><th>模型</th><th>模型倍率</th><th>补全倍率</th><th>输入价 $/1K</th><th>输出价 $/1K</th><th>固定价格 $/次</th><th style="text-align:right">操作</th></tr></thead><tbody id="prows"></tbody></table>
+      <input id="pkw" placeholder="过滤模型名…" style="height:34px;width:220px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px;margin-bottom:10px"><table><thead><tr><th>分组</th><th>模型</th><th>模型倍率</th><th>补全倍率</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>固定价格 $/次</th><th style="text-align:right">操作</th></tr></thead><tbody id="prows"></tbody></table>
       <div id="pedit"></div>
       <div class="editor" style="margin-top:14px">
         <div class="hint">新增模型定价</div>
@@ -213,9 +213,9 @@
       const tr = document.createElement("tr");
       const mr = typeof c.ModelRatio === "number" ? c.ModelRatio : null;
       const cr = typeof c.CompletionRatio === "number" ? c.CompletionRatio : null;
-      const inUsd = mr != null ? mr * 0.002 : null;
+      const inUsd = mr != null ? mr * 2 : null;
       const outUsd = mr != null ? inUsd * (cr != null ? cr : 1) : null;
-      const usdFmt = (v) => v == null ? "—" : "$" + (v >= 0.01 ? v.toFixed(3) : v.toPrecision(2));
+      const usdFmt = (v) => v == null ? "—" : "$" + (v >= 0.1 ? v.toFixed(2) : v.toPrecision(2));
       tr.innerHTML = `<td style="font-size:12px;color:#6b6577">${esc([...(modelGroups[e.model_name] || [])].join(",") || "—")}</td>
         <td><b>${esc(e.model_name)}</b></td>
         <td>${fmt(c.ModelRatio)}</td><td>${fmt(c.CompletionRatio)}</td>
@@ -285,12 +285,12 @@
     const c = entry.configured || {};
     const mr = typeof c.ModelRatio === "number" ? c.ModelRatio : null;
     const cr = typeof c.CompletionRatio === "number" ? c.CompletionRatio : null;
-    const inP = mr != null ? +(mr * 0.002).toFixed(6) : "";
-    const outP = mr != null ? +(mr * 0.002 * (cr != null ? cr : 1)).toFixed(6) : "";
+    const inP = mr != null ? +(mr * 2).toFixed(4) : "";
+    const outP = mr != null ? +(mr * 2 * (cr != null ? cr : 1)).toFixed(4) : "";
     const inp = (id, label, cur, w) => `<label style="font-size:12px;color:var(--muted)">${label}<input id="${id}" value="${cur === "" ? "" : cur}" placeholder="留空=清除" style="width:${w || 120}px;margin-left:6px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></label>`;
     ed.innerHTML = `<div class="editor">
-      <div class="hint">「${esc(entry.model_name)}」 直接按单价定价($/1K tokens),保存时自动换算倍率</div>
-      <div class="row">${inp("pv-in", "输入价 $/1K", inP)}${inp("pv-out", "输出价 $/1K", outP, 130)}${inp("pv-p", "固定价格$/次(按次模型用)", c.ModelPrice ?? "", 190)}</div>
+      <div class="hint">「${esc(entry.model_name)}」 直接按单价定价($/1M tokens),保存时自动换算倍率</div>
+      <div class="row">${inp("pv-in", "输入价 $/1M", inP)}${inp("pv-out", "输出价 $/1M", outP, 130)}${inp("pv-p", "固定价格$/次(按次模型用)", c.ModelPrice ?? "", 190)}</div>
       <div class="row">
         <button class="btn" id="pv-save">保存</button>
         <button class="btn ghost" id="pv-cancel">取消</button>
@@ -303,7 +303,7 @@
       const el = ed.querySelector("#pv-calc");
       const a = num("#pv-in"), b = num("#pv-out");
       if (a == null) { el.textContent = ""; return; }
-      el.textContent = `倍率:模型 ${+(a / 0.002).toFixed(4)} · 补全 ${b != null ? +(b / a).toFixed(4) : "—"}`;
+      el.textContent = `倍率:模型 ${+(a / 2).toFixed(4)} · 补全 ${b != null ? +(b / a).toFixed(4) : "—"}`;
     };
     ["#pv-in", "#pv-out"].forEach((id) => ed.querySelector(id).addEventListener("input", updCalc));
     updCalc();
@@ -317,7 +317,7 @@
       const pricing = {};
       if (price != null) pricing.ModelPrice = price;
       if (inU != null && inU > 0) {
-        pricing.ModelRatio = +(inU / 0.002).toFixed(8);
+        pricing.ModelRatio = +(inU / 2).toFixed(8); // $/1M = 倍率 × 2
         if (outU != null) pricing.CompletionRatio = +(outU / inU).toFixed(8);
       }
       const btn = ed.querySelector("#pv-save"); btn.disabled = true;

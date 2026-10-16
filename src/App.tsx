@@ -143,7 +143,7 @@ export default function App() {
 
   const refresh = () =>
     invoke<{ tools: Tool[]; login: LoginInfo | null; takeover: boolean }>("get_state")
-      .then((s) => { setTools(s.tools); setAccount(s.login); setTk(s.takeover !== false); })
+      .then((s) => { setTools(s.tools); setAccount(s.login); setTk(s.takeover !== false); loadBalance(); })
       .catch(() => {});
   useEffect(() => {
     (async () => {
@@ -189,11 +189,21 @@ export default function App() {
     } catch (e) { setTk(!next); say(`${e}`); }
   };
 
-  const loadBalance = () =>
+  const lastBal = useRef(0);
+  const loadBalance = (force = false) => {
+    if (!force && Date.now() - lastBal.current < 60_000) return;
+    lastBal.current = Date.now();
     invoke<{ quota_usd: number; used_usd: number }>("get_balance")
       .then(setBal)
       .catch(() => setBal(null));
-  useEffect(() => { if (account?.can_manage) loadBalance(); else setBal(null); }, [account?.can_manage]);
+  };
+  useEffect(() => {
+    const onFocus = () => loadBalance();
+    window.addEventListener("focus", onFocus);
+    const timer = window.setInterval(() => loadBalance(), 5 * 60_000);
+    return () => { window.removeEventListener("focus", onFocus); window.clearInterval(timer); };
+  }, []);
+  useEffect(() => { if (account?.can_manage) loadBalance(true); else setBal(null); }, [account?.can_manage]);
 
   const checkUpdate = async (silent = true) => {
     try {
