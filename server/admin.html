@@ -393,11 +393,11 @@
   }
   async function wbSetChannelGroups(c, groups) {
     const full = await api("/api/channel/" + c.id);
-    if (!full.success) { toast(full.message || "读取渠道失败", 1); return false; }
+    if (!full.success) return { ok: false, msg: full.message || "读取渠道失败" };
     const ch = full.data;
     ch.group = [...new Set(groups)].join(",") || "default";
     const d = await api("/api/channel/", { method: "PUT", body: JSON.stringify(ch) });
-    return !!d.success;
+    return d.success ? { ok: true } : { ok: false, msg: d.message || "保存失败" };
   }
   async function loadWorkbench(box) {
     if (!box.firstElementChild) box.innerHTML = `<div class="msg">加载中…</div>`;
@@ -440,10 +440,10 @@
       const rm = document.createElement("button"); rm.className = "btn warn"; rm.style.height = "28px"; rm.textContent = "移出";
       rm.onclick = async () => {
         rm.disabled = true;
-        const ok = await wbSetChannelGroups(c, String(c.group || "default").split(",").map((x) => x.trim()).filter((g) => g !== wbGroup));
+        const r = await wbSetChannelGroups(c, String(c.group || "default").split(",").map((x) => x.trim()).filter((g) => g !== wbGroup));
         rm.disabled = false;
-        toast(ok ? `已把「${c.name}」移出 ${wbGroup}` : "操作失败", !ok);
-        if (ok) loadWorkbench(box);
+        toast(r.ok ? `已把「${c.name}」移出 ${wbGroup}` : r.msg, !r.ok);
+        if (r.ok) loadWorkbench(box);
       };
       el.appendChild(rm); chList.appendChild(el);
     });
@@ -456,40 +456,57 @@
       b.textContent = "+ " + c.name;
       b.onclick = async () => {
         b.disabled = true;
-        const ok = await wbSetChannelGroups(c, [...String(c.group || "default").split(",").map((x) => x.trim()), wbGroup]);
+        const r = await wbSetChannelGroups(c, [...String(c.group || "default").split(",").map((x) => x.trim()), wbGroup]);
         b.disabled = false;
-        toast(ok ? `已把「${c.name}」加入 ${wbGroup}` : "操作失败", !ok);
-        if (ok) loadWorkbench(box);
+        toast(r.ok ? `已把「${c.name}」加入 ${wbGroup}` : r.msg, !r.ok);
+        if (r.ok) loadWorkbench(box);
       };
       outRow.appendChild(b);
     });
     card.appendChild(outRow);
 
-    // 模型区
-    const modelSet = new Map();
-    inCh.filter((c) => true).forEach((c) => String(c.models || "").split(",").map((x) => x.trim()).filter(Boolean).forEach((m) => modelSet.set(m, c.name)));
+    // 模型区:按渠道分子组
     const mh = document.createElement("div");
-    mh.innerHTML = `<div class="hint" style="margin-bottom:8px"><b>本组模型</b>(点击行编辑定价;本组价 = 单价 × ${ratio})</div>`;
+    mh.innerHTML = `<div class="hint" style="margin-bottom:8px"><b>本组模型</b>(按渠道分组;点击模型编辑定价;本组价 = 单价 × ${ratio})</div>`;
     card.appendChild(mh);
-    const mtable = document.createElement("table");
-    mtable.innerHTML = `<thead><tr><th>模型</th><th>来源渠道</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>本组输入价</th></tr></thead><tbody id="wrows"></tbody>`;
-    card.appendChild(mtable);
-    const tb = mtable.querySelector("#wrows");
-    [...modelSet.keys()].sort().forEach((m) => {
-      const e = D.cfgMap[m] || { model_name: m, version: D.emptyVer, configured: {} };
-      const c = e.configured || {};
+    const usd1m = (e, which) => {
+      const c = (e.configured || {});
       const mr = typeof c.ModelRatio === "number" ? c.ModelRatio : null;
       const cr = typeof c.CompletionRatio === "number" ? c.CompletionRatio : null;
-      const inU = mr != null ? mr * 2 : null, outU = mr != null ? mr * 2 * (cr != null ? cr : 1) : null;
-      const f = (v) => v == null ? "—" : "$" + (v >= 0.1 ? v.toFixed(2) : v.toPrecision(2));
-      const tr = document.createElement("tr");
-      tr.style.cursor = "pointer";
-      tr.innerHTML = `<td><b>${esc(m)}</b></td><td style="font-size:12px;color:#6b6577">${esc(modelSet.get(m))}</td>
-        <td>${f(inU)}</td><td>${f(outU)}</td><td style="color:#b04a2f;font-weight:700">${inU != null ? f(inU * ratio) : "—"}</td>`;
-      tr.onclick = () => editPricing(e);
-      tb.appendChild(tr);
+      if (mr == null) return null;
+      return which === "in" ? mr * 2 : mr * 2 * (cr != null ? cr : 1);
+    };
+    const f = (v) => v == null ? "—" : "$" + (v >= 0.1 ? v.toFixed(2) : v.toPrecision(2));
+    inCh.forEach((c) => {
+      const models = String(c.models || "").split(",").map((x) => x.trim()).filter(Boolean);
+      if (!models.length) return;
+      const blk = document.createElement("div");
+      blk.style.cssText = "border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fdfcfb";
+      const head = document.createElement("div");
+      head.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px";
+      head.innerHTML = `<b style="font-size:13px">${esc(c.name)}</b><span class="hint">${models.length} 个模型 · ${c.status === 1 ? "启用" : "停用"}</span>`;
+      blk.appendChild(head);
+      const mtab = document.createElement("table");
+      mtab.innerHTML = `<thead><tr><th>模型</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>本组输入价</th></tr></thead><tbody></tbody>`;
+      const mtb = mtab.querySelector("tbody");
+      models.sort().forEach((m) => {
+        const e = D.cfgMap[m] || { model_name: m, version: D.emptyVer, configured: {} };
+        const iu = usd1m(e, "in"), ou = usd1m(e, "out");
+        const tr = document.createElement("tr");
+        tr.style.cursor = "pointer";
+        tr.innerHTML = `<td><b>${esc(m)}</b></td><td>${f(iu)}</td><td>${f(ou)}</td>
+          <td style="color:#b04a2f;font-weight:700">${iu != null ? f(iu * ratio) : "—"}</td>`;
+        tr.onclick = () => editPricing(e);
+        mtb.appendChild(tr);
+      });
+      blk.appendChild(mtab);
+      card.appendChild(blk);
     });
-    if (!modelSet.size) tb.innerHTML = `<tr><td colspan="5" class="msg">本组暂无模型(先加入渠道)</td></tr>`;
+    if (!inCh.some((c) => String(c.models || "").trim())) {
+      const empty = document.createElement("div"); empty.className = "msg"; empty.textContent = "本组暂无模型(先加入渠道)";
+      card.appendChild(empty);
+    }
+    const modelSet = new Map();
 
     // 添加模型到组内渠道
     const addM = document.createElement("div"); addM.className = "editor"; addM.style.marginTop = "14px";
