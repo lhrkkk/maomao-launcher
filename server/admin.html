@@ -152,11 +152,11 @@
 
     const tabs = document.createElement("div"); tabs.className = "tabs";
     const mk = (key, label) => { const b = document.createElement("button"); b.textContent = label; b.className = tab === key ? "on" : ""; b.onclick = () => { tab = key; renderFrame(who); }; tabs.appendChild(b); };
-    mk("dash", "看板"); mk("users", "用户"); mk("channels", "上游渠道"); mk("pricing", "模型定价"); mk("models", "客户端模型配置");
+    mk("dash", "看板"); mk("wb", "分组"); mk("users", "用户"); mk("channels", "上游渠道"); mk("pricing", "模型定价"); mk("models", "客户端模型配置");
     app.appendChild(tabs);
 
     const body = document.createElement("div"); body.id = "tabbody"; app.appendChild(body);
-    if (tab === "dash") loadDash(body); else if (tab === "users") loadUsers(body); else if (tab === "channels") loadChannels(body); else if (tab === "pricing") loadPricing(body); else loadModelCfg(body);
+    if (tab === "dash") loadDash(body); else if (tab === "wb") loadWorkbench(body); else if (tab === "users") loadUsers(body); else if (tab === "channels") loadChannels(body); else if (tab === "pricing") loadPricing(body); else loadModelCfg(body);
   }
   async function boot() {
     await ensureToken(true); // 先静默续期,避免拿过期凭证请求在控制台报 401
@@ -227,58 +227,8 @@
     });
     filterRows("pkw", "prows");
     card.querySelector("#pnew-add").onclick = () => editPricing({ model_name: card.querySelector("#pnew-name").value.trim(), version: pricingSnap.empty_version, configured: {} });
-    loadGroups(box);
   }
 
-  // ---------- 下游分组 ----------
-  async function loadGroups(box) {
-    const card = document.createElement("div"); card.className = "card";
-    card.innerHTML = `<div class="hint" style="margin-bottom:10px"><b>下游分组</b>:令牌/用户可指定分组,按对应倍率计费(倍率 0.8 = 八折);渠道侧需在官方后台把分组名加进渠道的分组字段才会路由到。</div>
-      <table><thead><tr><th>分组</th><th>显示名</th><th>倍率</th><th style="text-align:right">操作</th></tr></thead><tbody id="grows"></tbody></table>
-      <div class="savebar"><button class="btn ghost" id="g-add" style="height:32px">+ 添加分组</button><button class="btn" id="g-save" style="height:32px">保存分组</button></div>`;
-    if (box.querySelector(".msg")) box.innerHTML = ""; // 清掉"加载中"占位
-    box.appendChild(card);
-    let ratios = {}, usable = {};
-    try {
-      const opt = await api("/api/option/");
-      const list = Array.isArray(opt.data) ? opt.data : (opt.data && opt.data.items) || [];
-      const byKey = {};
-      list.forEach((o) => byKey[o.key] = o.value);
-      ratios = JSON.parse(byKey.GroupRatio || "{}");
-      usable = JSON.parse(byKey.UserUsableGroups || "{}");
-    } catch (_) {}
-    let dirty = {};
-    const nameOf = (g) => usable[g] || g;
-    const renderRows = () => {
-      const tb = card.querySelector("#grows"); tb.innerHTML = "";
-      Object.keys(ratios).forEach((g) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td><b>${esc(g)}</b></td>
-          <td><input class="g-name" data-g="${esc(g)}" value="${esc(nameOf(g))}" style="width:130px;height:30px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></td>
-          <td><input class="g-ratio" data-g="${esc(g)}" value="${ratios[g]}" style="width:90px;height:30px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></td>
-          <td><div class="ops" style="justify-content:flex-end"><button class="btn warn g-del">删除</button></div></td>`;
-        tr.querySelector(".g-del").onclick = () => { delete ratios[g]; dirty = 1; renderRows(); };
-        tb.appendChild(tr);
-      });
-    };
-    renderRows();
-    card.querySelector("#g-add").onclick = () => {
-      const g = prompt("新分组名(英文,如 vip)"); if (!g) return;
-      if (ratios[g] != null) { toast("分组已存在", 1); return; }
-      ratios[g] = 1; usable[g] = g; dirty = 1; renderRows();
-    };
-    card.querySelector("#g-save").onclick = async () => {
-      card.querySelectorAll(".g-ratio").forEach((i) => { const v = Number(i.value); if (!isNaN(v) && v > 0) ratios[i.dataset.g] = v; });
-      card.querySelectorAll(".g-name").forEach((i) => { if (i.value.trim()) usable[i.dataset.g] = i.value.trim(); });
-      for (const g of Object.keys(ratios)) if (!(g in usable)) usable[g] = g;
-      const btn = card.querySelector("#g-save"); btn.disabled = true; btn.textContent = "保存中…";
-      const r1 = await api("/api/option/", { method: "PUT", body: JSON.stringify({ key: "GroupRatio", value: JSON.stringify(ratios) }) });
-      const r2 = await api("/api/option/", { method: "PUT", body: JSON.stringify({ key: "UserUsableGroups", value: JSON.stringify(usable) }) });
-      btn.disabled = false; btn.textContent = "保存分组";
-      const ok = r1.success && r2.success;
-      toast(ok ? "分组已保存 🐾" : (r1.message || r2.message || "保存失败"), !ok);
-    };
-  }
   function editPricing(entry) {
     if (!entry.model_name) { toast("请先填模型名", 1); return; }
     const ed = document.getElementById("pedit") || document.createElement("div");
@@ -421,6 +371,191 @@
       tb.innerHTML = rows.length ? rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td>${r.calls}</td><td>$${r.usd.toFixed(4)}</td></tr>`).join("") : `<tr><td colspan="3" class="msg">无数据</td></tr>`;
     };
     fill("#tm", st.by_model); fill("#tc", st.by_channel);
+  }
+
+  // ---------- 分组工作台 ----------
+  let wbGroup = "default";
+  async function wbData() {
+    const [opt, chs, snap] = await Promise.all([
+      api("/api/option/"),
+      api("/api/channel/?p=1&page_size=100"),
+      api("/api/option/model_pricing"),
+    ]);
+    const list = Array.isArray(opt.data) ? opt.data : (opt.data && opt.data.items) || [];
+    const byKey = {}; list.forEach((o) => byKey[o.key] = o.value);
+    let ratios = {}, usable = {};
+    try { ratios = JSON.parse(byKey.GroupRatio || "{}"); } catch (_) {}
+    try { usable = JSON.parse(byKey.UserUsableGroups || "{}"); } catch (_) {}
+    const channels = (chs.data && (chs.data.items || chs.data) || []);
+    if (!snap.success) throw new Error(snap.message || "定价数据加载失败");
+    const cfgMap = {}; (snap.data.entries || []).forEach((e) => cfgMap[e.model_name] = e);
+    return { ratios, usable, channels, cfgMap, emptyVer: snap.data.empty_version };
+  }
+  async function wbSetChannelGroups(c, groups) {
+    const full = await api("/api/channel/" + c.id);
+    if (!full.success) { toast(full.message || "读取渠道失败", 1); return false; }
+    const ch = full.data;
+    ch.group = [...new Set(groups)].join(",") || "default";
+    const d = await api("/api/channel/", { method: "PUT", body: JSON.stringify(ch) });
+    return !!d.success;
+  }
+  async function loadWorkbench(box) {
+    if (!box.firstElementChild) box.innerHTML = `<div class="msg">加载中…</div>`;
+    let D;
+    try { D = await wbData(); }
+    catch (e) { box.innerHTML = `<div class="msg err">${esc(e.message || "加载失败")}</div>`; return; }
+    if (!D.ratios[wbGroup]) wbGroup = Object.keys(D.ratios)[0] || "default";
+    box.innerHTML = "";
+    const card = document.createElement("div"); card.className = "card";
+    const ratio = D.ratios[wbGroup] ?? 1;
+    // 分组条
+    const bar = document.createElement("div");
+    bar.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:14px";
+    Object.keys(D.ratios).forEach((g) => {
+      const b = document.createElement("button");
+      b.className = "btn " + (g === wbGroup ? "" : "ghost");
+      b.style.height = "30px";
+      b.textContent = `${D.usable[g] || g} ×${D.ratios[g]}`;
+      b.onclick = () => { wbGroup = g; loadWorkbench(box); };
+      bar.appendChild(b);
+    });
+    const edit = document.createElement("button"); edit.className = "btn ghost"; edit.style.height = "30px"; edit.textContent = "✎ 编辑本组";
+    const addG = document.createElement("button"); addG.className = "btn ghost"; addG.style.height = "30px"; addG.textContent = "+ 新建分组";
+    bar.appendChild(edit); bar.appendChild(addG);
+    card.appendChild(bar);
+
+    // 组内/组外渠道
+    const inCh = D.channels.filter((c) => String(c.group || "default").split(",").map((x) => x.trim()).includes(wbGroup));
+    const outCh = D.channels.filter((c) => !inCh.includes(c));
+    const chHead = document.createElement("div");
+    chHead.innerHTML = `<div class="hint" style="margin-bottom:8px"><b>「${esc(D.usable[wbGroup] || wbGroup)}」的渠道</b>(加入即代表该分组的用户会路由到这些上游;倍率 ×${ratio},本组用户按此折扣计费)</div>`;
+    card.appendChild(chHead);
+    const chList = document.createElement("div");
+    chList.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-bottom:6px";
+    inCh.forEach((c) => {
+      const el = document.createElement("div");
+      el.style.cssText = "border:1px solid var(--line);border-radius:11px;padding:10px 12px;background:#fdfcfb;display:flex;align-items:center;gap:8px";
+      const n = String(c.models || "").split(",").filter(Boolean).length;
+      el.innerHTML = `<div style="min-width:0;flex:1"><b style="font-size:13px">${esc(c.name)}</b><div class="hint">${c.status === 1 ? "启用" : "停用"} · ${n} 个模型</div></div>`;
+      const rm = document.createElement("button"); rm.className = "btn warn"; rm.style.height = "28px"; rm.textContent = "移出";
+      rm.onclick = async () => {
+        rm.disabled = true;
+        const ok = await wbSetChannelGroups(c, String(c.group || "default").split(",").map((x) => x.trim()).filter((g) => g !== wbGroup));
+        rm.disabled = false;
+        toast(ok ? `已把「${c.name}」移出 ${wbGroup}` : "操作失败", !ok);
+        if (ok) loadWorkbench(box);
+      };
+      el.appendChild(rm); chList.appendChild(el);
+    });
+    if (!inCh.length) chList.innerHTML = `<div class="hint">本组还没有渠道</div>`;
+    card.appendChild(chList);
+    const outRow = document.createElement("div");
+    outRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 18px";
+    outCh.forEach((c) => {
+      const b = document.createElement("button"); b.className = "btn ghost"; b.style.height = "26px"; b.style.fontSize = "11px";
+      b.textContent = "+ " + c.name;
+      b.onclick = async () => {
+        b.disabled = true;
+        const ok = await wbSetChannelGroups(c, [...String(c.group || "default").split(",").map((x) => x.trim()), wbGroup]);
+        b.disabled = false;
+        toast(ok ? `已把「${c.name}」加入 ${wbGroup}` : "操作失败", !ok);
+        if (ok) loadWorkbench(box);
+      };
+      outRow.appendChild(b);
+    });
+    card.appendChild(outRow);
+
+    // 模型区
+    const modelSet = new Map();
+    inCh.filter((c) => true).forEach((c) => String(c.models || "").split(",").map((x) => x.trim()).filter(Boolean).forEach((m) => modelSet.set(m, c.name)));
+    const mh = document.createElement("div");
+    mh.innerHTML = `<div class="hint" style="margin-bottom:8px"><b>本组模型</b>(点击行编辑定价;本组价 = 单价 × ${ratio})</div>`;
+    card.appendChild(mh);
+    const mtable = document.createElement("table");
+    mtable.innerHTML = `<thead><tr><th>模型</th><th>来源渠道</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>本组输入价</th></tr></thead><tbody id="wrows"></tbody>`;
+    card.appendChild(mtable);
+    const tb = mtable.querySelector("#wrows");
+    [...modelSet.keys()].sort().forEach((m) => {
+      const e = D.cfgMap[m] || { model_name: m, version: D.emptyVer, configured: {} };
+      const c = e.configured || {};
+      const mr = typeof c.ModelRatio === "number" ? c.ModelRatio : null;
+      const cr = typeof c.CompletionRatio === "number" ? c.CompletionRatio : null;
+      const inU = mr != null ? mr * 2 : null, outU = mr != null ? mr * 2 * (cr != null ? cr : 1) : null;
+      const f = (v) => v == null ? "—" : "$" + (v >= 0.1 ? v.toFixed(2) : v.toPrecision(2));
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.innerHTML = `<td><b>${esc(m)}</b></td><td style="font-size:12px;color:#6b6577">${esc(modelSet.get(m))}</td>
+        <td>${f(inU)}</td><td>${f(outU)}</td><td style="color:#b04a2f;font-weight:700">${inU != null ? f(inU * ratio) : "—"}</td>`;
+      tr.onclick = () => editPricing(e);
+      tb.appendChild(tr);
+    });
+    if (!modelSet.size) tb.innerHTML = `<tr><td colspan="5" class="msg">本组暂无模型(先加入渠道)</td></tr>`;
+
+    // 添加模型到组内渠道
+    const addM = document.createElement("div"); addM.className = "editor"; addM.style.marginTop = "14px";
+    addM.innerHTML = `<div class="hint">往本组渠道追加模型</div>
+      <div class="row">
+        <input id="wb-mn" placeholder="模型名(与上游一致)" style="flex:1;min-width:180px;height:32px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px">
+        <select id="wb-mc" style="height:32px;border:1px solid var(--line);border-radius:9px;padding:0 8px;font-size:12px">${inCh.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select>
+        <button class="btn" id="wb-madd" style="height:32px">追加</button>
+      </div>`;
+    card.appendChild(addM);
+    addM.querySelector("#wb-madd").onclick = async () => {
+      const name = addM.querySelector("#wb-mn").value.trim();
+      const cid = addM.querySelector("#wb-mc").value;
+      if (!name || !cid) { toast("填模型名并选渠道", 1); return; }
+      const c = inCh.find((x) => String(x.id) === String(cid));
+      const full = await api("/api/channel/" + cid);
+      if (!full.success) { toast("读取渠道失败", 1); return; }
+      const ch = full.data;
+      const cur = String(ch.models || "").split(",").map((x) => x.trim()).filter(Boolean);
+      if (cur.includes(name)) { toast("该渠道已有此模型", 1); return; }
+      ch.models = [...cur, name].join(",");
+      const d = await api("/api/channel/", { method: "PUT", body: JSON.stringify(ch) });
+      toast(d.success ? `已把 ${name} 追加到「${c ? c.name : cid}」` : d.message || "失败", !d.success);
+      if (d.success) loadWorkbench(box);
+    };
+
+    // 编辑本组 / 新建分组
+    edit.onclick = () => {
+      const er = document.createElement("div"); er.className = "editor"; er.style.marginBottom = "12px";
+      er.innerHTML = `<div class="row">
+        <label style="font-size:12px;color:var(--muted)">显示名<input id="wg-n" value="${esc(D.usable[wbGroup] || wbGroup)}" style="width:110px;margin-left:6px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></label>
+        <label style="font-size:12px;color:var(--muted)">倍率<input id="wg-r" value="${D.ratios[wbGroup]}" style="width:80px;margin-left:6px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></label>
+        <button class="btn" id="wg-save" style="height:32px">保存</button>
+        <button class="btn warn" id="wg-del" style="height:32px">删除本组</button>
+        <button class="btn ghost" id="wg-x" style="height:32px">取消</button>
+      </div>`;
+      card.insertBefore(er, bar.nextSibling);
+      er.querySelector("#wg-x").onclick = () => er.remove();
+      er.querySelector("#wg-save").onclick = async () => {
+        const n = er.querySelector("#wg-n").value.trim(), r = Number(er.querySelector("#wg-r").value);
+        if (!n || !(r > 0)) { toast("名称或倍率无效", 1); return; }
+        D.usable[wbGroup] = n; D.ratios[wbGroup] = r;
+        const r1 = await api("/api/option/", { method: "PUT", body: JSON.stringify({ key: "GroupRatio", value: JSON.stringify(D.ratios) }) });
+        const r2 = await api("/api/option/", { method: "PUT", body: JSON.stringify({ key: "UserUsableGroups", value: JSON.stringify(D.usable) }) });
+        toast(r1.success && r2.success ? "已保存 🐾" : "保存失败", !(r1.success && r2.success));
+        if (r1.success && r2.success) loadWorkbench(box);
+      };
+      er.querySelector("#wg-del").onclick = async () => {
+        if (!confirm(`删除分组 ${wbGroup}?(渠道不会被删,只是不再承接该组)`)) return;
+        delete D.ratios[wbGroup]; delete D.usable[wbGroup];
+        const r1 = await api("/api/option/", { method: "PUT", body: JSON.stringify({ key: "GroupRatio", value: JSON.stringify(D.ratios) }) });
+        const r2 = await api("/api/option/", { method: "PUT", body: JSON.stringify({ key: "UserUsableGroups", value: JSON.stringify(D.usable) }) });
+        if (r1.success && r2.success) { wbGroup = Object.keys(D.ratios)[0] || "default"; loadWorkbench(box); }
+        else toast("删除失败", 1);
+      };
+    };
+    addG.onclick = async () => {
+      const g = prompt("新分组名(英文,如 pro)"); if (!g) return;
+      if (D.ratios[g] != null) { toast("分组已存在", 1); return; }
+      D.ratios[g] = 1; D.usable[g] = g;
+      const r1 = await api("/api/option/", { method: "PUT", body: JSON.stringify({ key: "GroupRatio", value: JSON.stringify(D.ratios) }) });
+      const r2 = await api("/api/option/", { method: "PUT", body: JSON.stringify({ key: "UserUsableGroups", value: JSON.stringify(D.usable) }) });
+      if (r1.success && r2.success) { wbGroup = g; loadWorkbench(box); } else toast("创建失败", 1);
+    };
+
+    box.appendChild(card);
   }
 
   // ---------- 用户 ----------
