@@ -201,7 +201,7 @@ fn tools_spec() -> Vec<(&'static str, &'static str, ToolKind, bool)> {
         ("opencode", "OpenCode", Cli, true),
         ("openclaw", "OpenClaw", Cli, true),
         ("gemini", "Gemini CLI", Cli, false),
-        ("hermes", "Hermes Agent", Cli, false),
+        ("hermes", "Hermes Agent", Cli, true),
         ("pi", "Pi", Cli, false),
         ("claude-desktop", "Claude 桌面版", Desktop, false),
         // Codex 桌面功能集成在 ChatGPT.app(也兼容独立 Codex.app)
@@ -222,6 +222,8 @@ fn check_configured(id: &str) -> bool {
         "opencode" => fs::read_to_string(p(&[".config", "opencode", "opencode.json"]).unwrap_or_default())
             .map(|s| s.contains("binaryworld.world")).unwrap_or(false),
         "openclaw" => fs::read_to_string(p(&[".openclaw", "openclaw.config.json"]).unwrap_or_default())
+            .map(|s| s.contains("binaryworld.world")).unwrap_or(false),
+        "hermes" => fs::read_to_string(p(&[".hermes", "config.yaml"]).unwrap_or_default())
             .map(|s| s.contains("binaryworld.world")).unwrap_or(false),
         _ => false,
     }
@@ -291,6 +293,13 @@ fn write_toml(path: PathBuf, content: &str) -> Result<(), String> {
 }
 
 /// 拉取站点公开模型列表(失败时回退内置清单)
+// 各客户端默认模型集(与站点渠道模型名一一对应;来源:用户 2026-10-16 指定)
+const M_CODEX: &[&str] = &["gpt-6.1-sol", "grok-latest", "glm-5.3", "MiniMax-M3"];
+const M_FULL: &[&str] = &["gpt-6.1-sol", "claude-opus-5-5", "grok-latest", "glm-5.3", "MiniMax-M3"];
+const M_GROK: &[&str] = &["grok-latest"];
+const M_CLAUDE_MAIN: &str = "claude-opus-5-5";
+const M_CLAUDE_SMALL: &str = "glm-5.3";
+
 fn fetch_models() -> Vec<String> {
     const FALLBACK: &[&str] = &["glm-5.3", "glm-5.3-flash", "grok-4.6", "MiniMax-M3", "gpt-5.6-sol"];
     let client = match http_client() { Ok(c) => c, Err(_) => return FALLBACK.iter().map(|s| s.to_string()).collect() };
@@ -314,14 +323,16 @@ fn fetch_models() -> Vec<String> {
     }
 }
 
-fn apply_configs(key: &str, models: &[String]) -> Result<(), String> {
-    // Claude Code
+fn apply_configs(key: &str) -> Result<(), String> {
+    // Claude Code:默认主力模型 + 后台小模型
     merge_write_json({ let pp = p(&[".claude", "settings.json"])?; takeover_backup(&pp); pp }, |v| {
         if !v.get("env").map(|e| e.is_object()).unwrap_or(false) {
             v["env"] = serde_json::json!({});
         }
         v["env"]["ANTHROPIC_BASE_URL"] = serde_json::json!(BASE_CLAUDE);
         v["env"]["ANTHROPIC_AUTH_TOKEN"] = serde_json::json!(key);
+        v["env"]["ANTHROPIC_MODEL"] = serde_json::json!(M_CLAUDE_MAIN);
+        v["env"]["ANTHROPIC_SMALL_FAST_MODEL"] = serde_json::json!(M_CLAUDE_SMALL);
     })?;
 
     // Codex:auth.json 整文件覆盖(纯 API Key 模式，清除 ChatGPT OAuth 残留)
@@ -333,36 +344,37 @@ fn apply_configs(key: &str, models: &[String]) -> Result<(), String> {
     fs::write(&codex_auth, serde_json::to_string_pretty(&serde_json::json!({
         "OPENAI_API_KEY": key
     })).unwrap_or_default()).map_err(|e| format!("写入 auth.json 失败:{e}"))?;
-    let codex_model = models.iter().find(|m| m.as_str() == "glm-5.3")
-        .or_else(|| models.first())
-        .map(|s| s.as_str())
-        .unwrap_or("glm-5.3");
+    let codex_model = M_CODEX[0];
 
-    // 模型目录:用官方模板条目做骨架，每个模型生成一条
-    let catalog_path = p(&[".codex", "maomao-model-catalog.json"])?;
-    let template: serde_json::Value = serde_json::from_str(
-        include_str!("resources/codex_deepseek_catalog_template.json")
-    ).map_err(|e| format!("模板解析失败:{e}"))?;
-    let skeleton = template.pointer("/models/0").cloned()
-        .ok_or("模板缺少 models[0]")?;
-    let entries: Vec<serde_json::Value> = models.iter().enumerate().map(|(i, m)| {
-        let mut e = skeleton.clone();
-        let obj = e.as_object_mut().unwrap();
-        obj.insert("slug".into(), serde_json::json!(m));
-        obj.insert("visibility".into(), serde_json::json!("list"));
-        obj.insert("display_name".into(), serde_json::json!(m));
-        obj.insert("description".into(), serde_json::json!(format!("{m} · 猫猫 Token")));
-        obj.insert("context_window".into(), serde_json::json!(131072));
-        obj.insert("max_context_window".into(), serde_json::json!(131072));
-        obj.insert("priority".into(), serde_json::json!(1000 + i));
-        e
-    }).collect();
-    let catalog = serde_json::json!({ "models": entries });
-    if let Some(dir) = catalog_path.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("创建 ~/.codex 失败:{e}"))?;
-    }
-    fs::write(&catalog_path, serde_json::to_string_pretty(&catalog).unwrap_or_default())
-        .map_err(|e| format!("写入模型目录失败:{e}"))?;
+    // 模型目录:用官方模板条目做骨架,每个模型生成一条(Codex 与 Grok 共用逻辑)
+    let write_catalog = |dir_rel: &str, models: &[&str]| -> Result<PathBuf, String> {
+        let catalog_path = p(&[dir_rel, "maomao-model-catalog.json"])?;
+        let template: serde_json::Value = serde_json::from_str(
+            include_str!("resources/codex_deepseek_catalog_template.json")
+        ).map_err(|e| format!("模板解析失败:{e}"))?;
+        let skeleton = template.pointer("/models/0").cloned()
+            .ok_or("模板缺少 models[0]")?;
+        let entries: Vec<serde_json::Value> = models.iter().enumerate().map(|(i, m)| {
+            let mut e = skeleton.clone();
+            let obj = e.as_object_mut().unwrap();
+            obj.insert("slug".into(), serde_json::json!(m));
+            obj.insert("visibility".into(), serde_json::json!("list"));
+            obj.insert("display_name".into(), serde_json::json!(m));
+            obj.insert("description".into(), serde_json::json!(format!("{m} · 猫猫 Token")));
+            obj.insert("context_window".into(), serde_json::json!(131072));
+            obj.insert("max_context_window".into(), serde_json::json!(131072));
+            obj.insert("priority".into(), serde_json::json!(1000 + i));
+            e
+        }).collect();
+        let catalog = serde_json::json!({ "models": entries });
+        if let Some(dir) = catalog_path.parent() {
+            fs::create_dir_all(dir).map_err(|e| format!("创建 ~/{dir_rel} 失败:{e}"))?;
+        }
+        fs::write(&catalog_path, serde_json::to_string_pretty(&catalog).unwrap_or_default())
+            .map_err(|e| format!("写入模型目录失败:{e}"))?;
+        Ok(catalog_path)
+    };
+    let codex_catalog = write_catalog(".codex", M_CODEX)?;
 
     write_toml({ let pp = p(&[".codex", "config.toml"])?; takeover_backup(&pp); pp }, &format!(
         "# Managed by 猫猫 Token Launcher\n\
@@ -376,19 +388,23 @@ fn apply_configs(key: &str, models: &[String]) -> Result<(), String> {
          base_url = \"{BASE_OPENAI}\"\n\
          wire_api = \"responses\"\n\
          requires_openai_auth = true\n",
-        serde_json::to_string(catalog_path.to_str().unwrap_or_default()).unwrap_or_default()
+        serde_json::to_string(codex_catalog.to_str().unwrap_or_default()).unwrap_or_default()
     ))?;
 
-    // Grok Build
+    // Grok Build:同样生成模型目录(仅 grok 系)
+    let grok_catalog = write_catalog(".grok", M_GROK)?;
     write_toml({ let pp = p(&[".grok", "config.toml"])?; takeover_backup(&pp); pp }, &format!(
         "# Managed by 猫猫 Token Launcher\n\
          model_provider = \"maomao\"\n\
-         model = \"grok-4.6\"\n\n\
+         model = \"{}\"\n\
+         model_catalog_json = {}\n\n\
          [model_providers.maomao]\n\
          name = \"maomao\"\n\
          base_url = \"{BASE_OPENAI}\"\n\
          wire_api = \"responses\"\n\
-         requires_openai_auth = true\n"
+         requires_openai_auth = true\n",
+        M_GROK[0],
+        serde_json::to_string(grok_catalog.to_str().unwrap_or_default()).unwrap_or_default()
     ))?;
     fs::write({ let pp = p(&[".grok", "auth.json"])?; takeover_backup(&pp); pp }, serde_json::to_string_pretty(&serde_json::json!({
         "OPENAI_API_KEY": key
@@ -400,8 +416,8 @@ fn apply_configs(key: &str, models: &[String]) -> Result<(), String> {
             v["provider"] = serde_json::json!({});
         }
         let mut oc_models = serde_json::Map::new();
-        for m in models {
-            oc_models.insert(m.clone(), serde_json::json!({ "name": m }));
+        for m in M_FULL {
+            oc_models.insert(m.to_string(), serde_json::json!({ "name": m }));
         }
         v["provider"]["maomao"] = serde_json::json!({
             "npm": "@ai-sdk/openai-compatible",
@@ -417,9 +433,36 @@ fn apply_configs(key: &str, models: &[String]) -> Result<(), String> {
         v["apiKey"] = serde_json::json!(key);
         v["api"] = serde_json::json!("openai-completions");
         v["models"] = serde_json::Value::Array(
-            models.iter().map(|m| serde_json::json!({ "id": m, "name": m })).collect(),
+            M_FULL.iter().map(|m| serde_json::json!({ "id": m, "name": m })).collect(),
         );
     })?;
+
+    // Hermes Agent:~/.hermes/config.yaml(整文件接管,退出还原)
+    {
+        let hp = p(&[".hermes", "config.yaml"])?;
+        takeover_backup(&hp);
+        if let Some(dir) = hp.parent() {
+            fs::create_dir_all(dir).map_err(|e| format!("创建 ~/.hermes 失败:{e}"))?;
+        }
+        let mut yaml = String::new();
+        yaml.push_str("# Managed by 猫猫 Token Launcher\n");
+        yaml.push_str("model:\n");
+        yaml.push_str("  default: \"gpt-6.1-sol\"\n");
+        yaml.push_str("  provider: \"maomao\"\n");
+        yaml.push_str("  base_url: \"https://binaryworld.world/v1\"\n");
+        yaml.push_str("agent:\n");
+        yaml.push_str("  max_turns: 50\n");
+        yaml.push_str("custom_providers:\n");
+        yaml.push_str("  - name: maomao\n");
+        yaml.push_str("    base_url: https://binaryworld.world/v1\n");
+        yaml.push_str(&format!("    api_key: {key}\n"));
+        yaml.push_str("    model: gpt-6.1-sol\n");
+        yaml.push_str("    models:\n");
+        for m in M_FULL {
+            yaml.push_str(&format!("      {m}:\n        context_length: 131072\n"));
+        }
+        fs::write(&hp, yaml).map_err(|e| format!("写入 config.yaml 失败:{e}"))?;
+    }
 
     Ok(())
 }
@@ -428,8 +471,7 @@ fn apply_configs(key: &str, models: &[String]) -> Result<(), String> {
 fn save_key(key: String) -> Result<(), String> {
     let key = key.trim().to_string();
     if key.is_empty() { return Err("API Key 不能为空".into()); }
-    let models = fetch_models();
-    apply_configs(&key, &models)?;
+    apply_configs(&key)?;
     // 与账号登录一致:记录接管状态，重开 app 自动接管;已登录账号则保留身份(密钥管理可用)
     let (username, at) = stored_identity();
     write_state(&username, &key, at.as_deref(), None)
@@ -514,8 +556,7 @@ fn takeover(app: tauri::AppHandle, on: bool) -> Result<(), String> {
     let key = st.get("key").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
     if key.is_empty() { return Err("尚未配置密钥,请先登录".into()); }
     if on {
-        let models = fetch_models();
-        apply_configs(&key, &models)?;
+        apply_configs(&key)?;
     } else {
         restore_files()?;
     }
@@ -591,8 +632,7 @@ fn use_token(id: i64) -> Result<String, String> {
     };
     if raw.is_empty() { return Err("站点未返回 Key".into()); }
     let key = if raw.starts_with("sk-") { raw } else { format!("sk-{raw}") };
-    let models = fetch_models();
-    apply_configs(&key, &models)?;
+    apply_configs(&key)?;
     // 保留账号身份，仅切换当前使用的 key
     let (username, at) = stored_identity();
     let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.clone() };
@@ -625,8 +665,7 @@ fn deep_link_setup_impl(key: &str, username: &str, at: Option<&str>, token_id: O
     if !key.starts_with("sk-") || key.len() < 12 {
         return Err("授权数据无效，请在网页端重试".into());
     }
-    let models = fetch_models();
-    apply_configs(&key, &models)?;
+    apply_configs(&key)?;
     let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.clone() };
     // 深链带回的 access_token 优先(密钥管理可用),否则沿用本地已有身份
     let (_, old_at) = stored_identity();
@@ -752,8 +791,7 @@ fn login_and_setup(username: String, password: String, turnstile: Option<String>
     if raw.is_empty() { return Err("站点未返回 Key".into()); }
     let key = if raw.starts_with("sk-") { raw } else { format!("sk-{raw}") };
 
-    let models = fetch_models();
-    apply_configs(&key, &models)?;
+    apply_configs(&key)?;
     let mask = if key.len() > 13 { format!("{}…{}", &key[..10], &key[key.len()-4..]) } else { key.clone() };
     write_state(username.trim(), &key, Some(&token), Some(id))?;
     Ok(mask)
@@ -798,6 +836,7 @@ fn restore_files() -> Result<(), String> {
         (".grok", "auth.json"),
         (".grok", "config.toml"),
         (".openclaw", "openclaw.config.json"),
+        (".hermes", "config.yaml"),
     ] {
         if let Ok(pp) = p(&[rel.0, rel.1]) { restore_or_remove(&pp); }
     }
