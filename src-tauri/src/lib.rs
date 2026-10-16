@@ -293,12 +293,57 @@ fn write_toml(path: PathBuf, content: &str) -> Result<(), String> {
 }
 
 /// 拉取站点公开模型列表(失败时回退内置清单)
-// 各客户端默认模型集(与站点渠道模型名一一对应;来源:用户 2026-10-16 指定)
-const M_CODEX: &[&str] = &["gpt-6.1-sol", "grok-latest", "glm-5.3", "MiniMax-M3"];
-const M_FULL: &[&str] = &["gpt-6.1-sol", "claude-opus-5-5", "grok-latest", "glm-5.3", "MiniMax-M3"];
-const M_GROK: &[&str] = &["grok-latest"];
-const M_CLAUDE_MAIN: &str = "claude-opus-5-5";
-const M_CLAUDE_SMALL: &str = "glm-5.3";
+// 各客户端模型集:默认内置,运营后台(/admin)可下发覆盖 —— GET /app-config.json
+#[derive(Clone)]
+struct AppCfg {
+    codex: Vec<String>, codex_default: String,
+    grok: Vec<String>, grok_default: String,
+    full: Vec<String>, full_default: String,
+    claude_main: String, claude_small: String,
+}
+
+fn default_app_config() -> AppCfg {
+    AppCfg {
+        codex: ["gpt-6.1-sol", "grok-latest", "glm-5.3", "MiniMax-M3"].iter().map(|s| s.to_string()).collect(),
+        codex_default: "gpt-6.1-sol".into(),
+        grok: ["grok-latest"].iter().map(|s| s.to_string()).collect(),
+        grok_default: "grok-latest".into(),
+        full: ["gpt-6.1-sol", "claude-opus-5-5", "grok-latest", "glm-5.3", "MiniMax-M3"].iter().map(|s| s.to_string()).collect(),
+        full_default: "gpt-6.1-sol".into(),
+        claude_main: "claude-opus-5-5".into(),
+        claude_small: "glm-5.3".into(),
+    }
+}
+
+fn cfg_strings(v: &serde_json::Value, key: &str, fallback: &[String]) -> Vec<String> {
+    match v.get(key).and_then(|x| x.as_array()) {
+        Some(arr) => {
+            let list: Vec<String> = arr.iter().filter_map(|m| m.as_str()).map(|s| s.to_string()).filter(|s| !s.is_empty()).collect();
+            if list.is_empty() { fallback.to_vec() } else { list }
+        }
+        None => fallback.to_vec(),
+    }
+}
+
+fn cfg_string(v: &serde_json::Value, key: &str, fallback: &str) -> String {
+    v.get(key).and_then(|x| x.as_str()).filter(|s| !s.is_empty()).unwrap_or(fallback).to_string()
+}
+
+fn fetch_app_config() -> AppCfg {
+    let mut c = default_app_config();
+    let Ok(client) = http_client() else { return c };
+    let Ok(resp) = client.get(format!("{SITE}/app-config.json")).send() else { return c };
+    let Ok(v) = resp.json::<serde_json::Value>() else { return c };
+    c.codex = cfg_strings(&v, "codex", &c.codex);
+    c.codex_default = cfg_string(&v, "codex_default", &c.codex_default);
+    c.grok = cfg_strings(&v, "grok", &c.grok);
+    c.grok_default = cfg_string(&v, "grok_default", &c.grok_default);
+    c.full = cfg_strings(&v, "full", &c.full);
+    c.full_default = cfg_string(&v, "full_default", &c.full_default);
+    c.claude_main = cfg_string(&v, "claude_main", &c.claude_main);
+    c.claude_small = cfg_string(&v, "claude_small", &c.claude_small);
+    c
+}
 
 fn fetch_models() -> Vec<String> {
     const FALLBACK: &[&str] = &["glm-5.3", "glm-5.3-flash", "grok-4.6", "MiniMax-M3", "gpt-5.6-sol"];
@@ -324,6 +369,7 @@ fn fetch_models() -> Vec<String> {
 }
 
 fn apply_configs(key: &str) -> Result<(), String> {
+    let acfg = fetch_app_config();
     // Claude Code:默认主力模型 + 后台小模型
     merge_write_json({ let pp = p(&[".claude", "settings.json"])?; takeover_backup(&pp); pp }, |v| {
         if !v.get("env").map(|e| e.is_object()).unwrap_or(false) {
@@ -331,8 +377,8 @@ fn apply_configs(key: &str) -> Result<(), String> {
         }
         v["env"]["ANTHROPIC_BASE_URL"] = serde_json::json!(BASE_CLAUDE);
         v["env"]["ANTHROPIC_AUTH_TOKEN"] = serde_json::json!(key);
-        v["env"]["ANTHROPIC_MODEL"] = serde_json::json!(M_CLAUDE_MAIN);
-        v["env"]["ANTHROPIC_SMALL_FAST_MODEL"] = serde_json::json!(M_CLAUDE_SMALL);
+        v["env"]["ANTHROPIC_MODEL"] = serde_json::json!(&acfg.claude_main);
+        v["env"]["ANTHROPIC_SMALL_FAST_MODEL"] = serde_json::json!(&acfg.claude_small);
     })?;
 
     // Codex:auth.json 整文件覆盖(纯 API Key 模式，清除 ChatGPT OAuth 残留)
@@ -344,10 +390,10 @@ fn apply_configs(key: &str) -> Result<(), String> {
     fs::write(&codex_auth, serde_json::to_string_pretty(&serde_json::json!({
         "OPENAI_API_KEY": key
     })).unwrap_or_default()).map_err(|e| format!("写入 auth.json 失败:{e}"))?;
-    let codex_model = M_CODEX[0];
+    let codex_model = acfg.codex_default.clone();
 
     // 模型目录:用官方模板条目做骨架,每个模型生成一条(Codex 与 Grok 共用逻辑)
-    let write_catalog = |dir_rel: &str, models: &[&str]| -> Result<PathBuf, String> {
+    let write_catalog = |dir_rel: &str, models: &[String]| -> Result<PathBuf, String> {
         let catalog_path = p(&[dir_rel, "maomao-model-catalog.json"])?;
         let template: serde_json::Value = serde_json::from_str(
             include_str!("resources/codex_deepseek_catalog_template.json")
@@ -374,7 +420,7 @@ fn apply_configs(key: &str) -> Result<(), String> {
             .map_err(|e| format!("写入模型目录失败:{e}"))?;
         Ok(catalog_path)
     };
-    let codex_catalog = write_catalog(".codex", M_CODEX)?;
+    let codex_catalog = write_catalog(".codex", &acfg.codex)?;
 
     write_toml({ let pp = p(&[".codex", "config.toml"])?; takeover_backup(&pp); pp }, &format!(
         "# Managed by 猫猫 Token Launcher\n\
@@ -392,7 +438,7 @@ fn apply_configs(key: &str) -> Result<(), String> {
     ))?;
 
     // Grok Build:同样生成模型目录(仅 grok 系)
-    let grok_catalog = write_catalog(".grok", M_GROK)?;
+    let grok_catalog = write_catalog(".grok", &acfg.grok)?;
     write_toml({ let pp = p(&[".grok", "config.toml"])?; takeover_backup(&pp); pp }, &format!(
         "# Managed by 猫猫 Token Launcher\n\
          model_provider = \"maomao\"\n\
@@ -403,7 +449,7 @@ fn apply_configs(key: &str) -> Result<(), String> {
          base_url = \"{BASE_OPENAI}\"\n\
          wire_api = \"responses\"\n\
          requires_openai_auth = true\n",
-        M_GROK[0],
+        &acfg.grok_default,
         serde_json::to_string(grok_catalog.to_str().unwrap_or_default()).unwrap_or_default()
     ))?;
     fs::write({ let pp = p(&[".grok", "auth.json"])?; takeover_backup(&pp); pp }, serde_json::to_string_pretty(&serde_json::json!({
@@ -416,7 +462,7 @@ fn apply_configs(key: &str) -> Result<(), String> {
             v["provider"] = serde_json::json!({});
         }
         let mut oc_models = serde_json::Map::new();
-        for m in M_FULL {
+        for m in &acfg.full {
             oc_models.insert(m.to_string(), serde_json::json!({ "name": m }));
         }
         v["provider"]["maomao"] = serde_json::json!({
@@ -433,7 +479,7 @@ fn apply_configs(key: &str) -> Result<(), String> {
         v["apiKey"] = serde_json::json!(key);
         v["api"] = serde_json::json!("openai-completions");
         v["models"] = serde_json::Value::Array(
-            M_FULL.iter().map(|m| serde_json::json!({ "id": m, "name": m })).collect(),
+            acfg.full.iter().map(|m| serde_json::json!({ "id": m, "name": m })).collect(),
         );
     })?;
 
@@ -447,7 +493,7 @@ fn apply_configs(key: &str) -> Result<(), String> {
         let mut yaml = String::new();
         yaml.push_str("# Managed by 猫猫 Token Launcher\n");
         yaml.push_str("model:\n");
-        yaml.push_str("  default: \"gpt-6.1-sol\"\n");
+        yaml.push_str(&format!("  default: \"{}\"\n", acfg.full_default));
         yaml.push_str("  provider: \"maomao\"\n");
         yaml.push_str("  base_url: \"https://binaryworld.world/v1\"\n");
         yaml.push_str("agent:\n");
@@ -456,9 +502,9 @@ fn apply_configs(key: &str) -> Result<(), String> {
         yaml.push_str("  - name: maomao\n");
         yaml.push_str("    base_url: https://binaryworld.world/v1\n");
         yaml.push_str(&format!("    api_key: {key}\n"));
-        yaml.push_str("    model: gpt-6.1-sol\n");
+        yaml.push_str(&format!("    model: {}\n", acfg.full_default));
         yaml.push_str("    models:\n");
-        for m in M_FULL {
+        for m in &acfg.full {
             yaml.push_str(&format!("      {m}:\n        context_length: 131072\n"));
         }
         fs::write(&hp, yaml).map_err(|e| format!("写入 config.yaml 失败:{e}"))?;
