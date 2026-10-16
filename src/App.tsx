@@ -61,6 +61,7 @@ function KeysPanel({ account, onUsed, say }: {
   const [tokens, setTokens] = useState<TokenEntry[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const lastLoad = useRef(0);
 
   useEffect(() => {
     if (!open) return;
@@ -71,8 +72,16 @@ function KeysPanel({ account, onUsed, say }: {
 
   const load = async () => {
     setBusy(true);
-    try { setTokens(await invoke<TokenEntry[]>("list_tokens")); }
-    catch (e) { say(`${e}`); setTokens([]); }
+    try { setTokens(await invoke<TokenEntry[]>("list_tokens")); lastLoad.current = Date.now(); }
+    catch (e) {
+      const msg = `${e}`;
+      say(msg);
+      setTokens([]);
+      if (msg.includes("登录已过期")) {
+        say("登录已过期,已打开浏览器重新授权…");
+        openUrl("https://binaryworld.world/launcher-auth");
+      }
+    }
     setBusy(false);
   };
   useEffect(() => { if (account?.can_manage) load(); }, []);
@@ -93,7 +102,7 @@ function KeysPanel({ account, onUsed, say }: {
         : (() => {
           const cur = tokens.find((t) => t.id === account.token_id) || tokens[0];
           return (
-            <div className={`ksel ${open ? "open" : ""}`} onClick={(e) => { e.stopPropagation(); if (!open) load(); setOpen(!open); }}>
+            <div className={`ksel ${open ? "open" : ""}`} onClick={(e) => { e.stopPropagation(); if (!open && Date.now() - lastLoad.current > 60_000) load(); setOpen(!open); }}>
               <div className="ksel-head">
                 <span className="krow-name">{cur.name}{cur.id === account.token_id ? " · 使用中" : ""}</span>
                 <ModelTags t={cur} />
@@ -302,7 +311,7 @@ export default function App() {
               </div>
             </div>
             <KeysPanel account={account} onUsed={refresh} say={say} />
-            <div className="keyhint">切换密钥即重新接管;退出应用自动还原;登录过期就重新一键登录</div>
+            <div className="keyhint">退出应用会自动还原本机配置</div>
           </>
         ) : (
           <button
