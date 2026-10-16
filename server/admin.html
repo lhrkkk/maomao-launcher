@@ -570,7 +570,9 @@
 
     // 编辑本组 / 新建分组
     edit.onclick = () => {
-      const er = document.createElement("div"); er.className = "editor"; er.style.marginBottom = "12px";
+      const ex = card.querySelector(".group-edit");
+      if (ex) { ex.remove(); return; } // 再点收起,且同屏仅一个
+      const er = document.createElement("div"); er.className = "editor group-edit"; er.style.marginBottom = "12px";
       er.innerHTML = `<div class="row">
         <label style="font-size:12px;color:var(--muted)">显示名<input id="wg-n" value="${esc(D.usable[wbGroup] || wbGroup)}" style="width:110px;margin-left:6px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></label>
         <label style="font-size:12px;color:var(--muted)">倍率<input id="wg-r" value="${D.ratios[wbGroup]}" style="width:80px;margin-left:6px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></label>
