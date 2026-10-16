@@ -815,10 +815,40 @@
         <td><div class="ops" style="justify-content:flex-end">
           <button class="btn ghost act-status">${c.status === 1 ? "停用" : "启用"}</button>
           <button class="btn ghost act-bal" title="从上游查询余额">↻余额</button>
+          <button class="btn ghost act-models">模型</button>
           <button class="btn act-edit">编辑模型</button>
         </div></td>`;
       tr.querySelector(".act-status").onclick = (ev) => toggleStatus(c, c.status !== 1 ? 1 : 2, tr, ev.target);
       tr.querySelector(".act-edit").onclick = () => editModels(c);
+      tr.querySelector(".act-models").onclick = async (ev) => {
+        const existed = tr.nextElementSibling && tr.nextElementSibling.classList.contains("ch-models-detail");
+        if (existed) { tr.nextElementSibling.remove(); ev.target.textContent = "模型"; return; }
+        ev.target.textContent = "收起";
+        await loadCosts();
+        let snap = pricingSnap;
+        if (!snap) {
+          const d2 = await api("/api/option/model_pricing");
+          if (d2.success) snap = pricingSnap = d2.data;
+        }
+        const cfg = {};
+        ((snap && snap.entries) || []).forEach((e) => cfg[e.model_name] = e);
+        const models = String(c.models || "").split(",").map((x) => x.trim()).filter(Boolean);
+        const f = (v) => v == null ? "—" : "$" + (v >= 0.1 ? v.toFixed(2) : v.toPrecision(2));
+        const detail = document.createElement("tr");
+        detail.className = "ch-models-detail";
+        detail.innerHTML = `<td colspan="8" style="background:#fbf9fc;padding:10px 14px">
+          ${models.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${models.sort().map((m) => {
+            const c2 = (cfg[m] && cfg[m].configured) || {};
+            const mr = typeof c2.ModelRatio === "number" ? c2.ModelRatio : null;
+            const cr = typeof c2.CompletionRatio === "number" ? c2.CompletionRatio : null;
+            const inU = mr != null ? mr * 2 : null;
+            const outU = mr != null ? inU * (cr != null ? cr : 1) : null;
+            const cst = costOf(m);
+            return `<span class="chip" title="输入 ${f(inU)} · 输出 ${f(outU)}${cst ? ` · 成本 $${cst.in ?? "—"}/${cst.out ?? "—"}` : ""}">${esc(m)}<i style="font-style:normal;color:#857f95;font-weight:600;margin-left:5px">${f(inU)}</i></span>`;
+          }).join("")}</div>` : `<span class="hint">该渠道没有配置模型</span>`}
+        </td>`;
+        tr.after(detail);
+      };
       tr.querySelector(".act-bal").onclick = async (ev) => {
         const b = ev.target; b.disabled = true; b.textContent = "…";
         const d = await api("/api/channel/update_balance/" + c.id);
