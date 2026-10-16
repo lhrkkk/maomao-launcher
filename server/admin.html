@@ -283,10 +283,14 @@
     if (!entry.model_name) { toast("请先填模型名", 1); return; }
     const ed = document.getElementById("pedit") || document.createElement("div");
     const c = entry.configured || {};
-    const inp = (id, label, cur) => `<label style="font-size:12px;color:var(--muted)">${label}<input id="${id}" value="${cur == null ? "" : (typeof cur === "number" ? +cur.toFixed(4) : cur)}" placeholder="留空=清除" style="width:110px;margin-left:6px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></label>`;
+    const mr = typeof c.ModelRatio === "number" ? c.ModelRatio : null;
+    const cr = typeof c.CompletionRatio === "number" ? c.CompletionRatio : null;
+    const inP = mr != null ? +(mr * 0.002).toFixed(6) : "";
+    const outP = mr != null ? +(mr * 0.002 * (cr != null ? cr : 1)).toFixed(6) : "";
+    const inp = (id, label, cur, w) => `<label style="font-size:12px;color:var(--muted)">${label}<input id="${id}" value="${cur === "" ? "" : cur}" placeholder="留空=清除" style="width:${w || 120}px;margin-left:6px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></label>`;
     ed.innerHTML = `<div class="editor">
-      <div class="hint">「${esc(entry.model_name)}」</div>
-      <div class="row">${inp("pv-r", "模型倍率", c.ModelRatio)}${inp("pv-c", "补全倍率", c.CompletionRatio)}${inp("pv-p", "固定价格$/次", c.ModelPrice)}</div>
+      <div class="hint">「${esc(entry.model_name)}」 直接按单价定价($/1K tokens),保存时自动换算倍率</div>
+      <div class="row">${inp("pv-in", "输入价 $/1K", inP)}${inp("pv-out", "输出价 $/1K", outP, 130)}${inp("pv-p", "固定价格$/次(按次模型用)", c.ModelPrice ?? "", 190)}</div>
       <div class="row">
         <button class="btn" id="pv-save">保存</button>
         <button class="btn ghost" id="pv-cancel">取消</button>
@@ -296,24 +300,26 @@
     ed.scrollIntoView({ behavior: "smooth", block: "nearest" });
     const updCalc = () => {
       const num = (id) => { const v = ed.querySelector(id).value.trim(); return v === "" ? null : Number(v); };
-      const mr = num("#pv-r"), cr = num("#pv-c");
       const el = ed.querySelector("#pv-calc");
-      if (mr == null) { el.textContent = "填入模型倍率后显示折算单价"; return; }
-      const inU = mr * 0.002, outU = inU * (cr != null ? cr : 1);
-      el.textContent = `折算:输入 $${inU.toFixed(4)}/1K · 输出 $${outU.toFixed(4)}/1K`;
+      const a = num("#pv-in"), b = num("#pv-out");
+      if (a == null) { el.textContent = ""; return; }
+      el.textContent = `倍率:模型 ${+(a / 0.002).toFixed(4)} · 补全 ${b != null ? +(b / a).toFixed(4) : "—"}`;
     };
-    ["#pv-r", "#pv-c"].forEach((id) => ed.querySelector(id) && ed.querySelector(id).addEventListener("input", updCalc));
+    ["#pv-in", "#pv-out"].forEach((id) => ed.querySelector(id).addEventListener("input", updCalc));
     updCalc();
     ed.querySelector("#pv-cancel").onclick = () => ed.innerHTML = "";
     ed.querySelector("#pv-save").onclick = async () => {
       const num = (id) => { const v = ed.querySelector(id).value.trim(); return v === "" ? null : Number(v); };
+      const inU = num("#pv-in"), outU = num("#pv-out"), price = num("#pv-p");
+      if (inU == null && outU == null && price == null) { toast("至少填一项", 1); return; }
+      if ([inU, outU, price].some((v) => v != null && (isNaN(v) || v < 0))) { toast("数值无效", 1); return; }
+      if (inU != null && inU <= 0 && outU != null) { toast("输出价换算需要输入价大于 0", 1); return; }
       const pricing = {};
-      const mr = num("#pv-r"), cr = num("#pv-c"), mp = num("#pv-p");
-      if (mr != null) pricing.ModelRatio = mr;
-      if (cr != null) pricing.CompletionRatio = cr;
-      if (mp != null) pricing.ModelPrice = mp;
-      if (!Object.keys(pricing).length) { toast("至少填一项", 1); return; }
-      if ([mr, cr, mp].some((v) => v != null && (isNaN(v) || v < 0))) { toast("数值无效", 1); return; }
+      if (price != null) pricing.ModelPrice = price;
+      if (inU != null && inU > 0) {
+        pricing.ModelRatio = +(inU / 0.002).toFixed(8);
+        if (outU != null) pricing.CompletionRatio = +(outU / inU).toFixed(8);
+      }
       const btn = ed.querySelector("#pv-save"); btn.disabled = true;
       const d = await api("/api/option/model_pricing", { method: "PATCH", body: JSON.stringify({ changes: [{ model_name: entry.model_name, expected_version: entry.version || "", pricing }] }) });
       btn.disabled = false;
