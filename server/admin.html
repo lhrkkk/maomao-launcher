@@ -167,9 +167,27 @@
 
   // ---------- 模型定价 ----------
   let pricingSnap = null;
-  let modelCosts = {}; // 模型 → 成本 $/1M(自维护账本)
+  let modelCosts = {}; // 模型 → {in, out} 成本 $/1M(自维护账本)
+  let ioRatios = {};   // 模型 → 实际 输出/输入 token 比(来自统计)
+  const costOf = (m) => {
+    const c = modelCosts[m];
+    if (c == null) return null;
+    if (typeof c === "number") return { in: c, out: c };
+    return { in: c.in != null ? c.in : null, out: c.out != null ? c.out : null };
+  };
+  // 综合毛利率:按实际 io 比加权 (售价入 + r×售价出) vs (成本入 + r×成本出)
+  const marginOf = (m, inU, outU, ratio) => {
+    const c = costOf(m);
+    if (inU == null || !c) return null;
+    const r = ratio != null ? ratio : 1;
+    const rev = inU + r * (outU != null ? outU : inU);
+    const cost = (c.in != null ? c.in : 0) + r * (c.out != null ? c.out : 0);
+    if (rev <= 0) return null;
+    return (rev - cost) / rev;
+  };
   async function loadCosts() {
     try { const r = await fetch("/mm-admin/cost"); const d = await r.json(); if (d.success) modelCosts = d.data || {}; } catch (_) {}
+    try { const r = await fetch("/mm-admin/stats?days=30"); const d = await r.json(); if (d.success) ioRatios = (d.data && d.data.io_ratio) || {}; } catch (_) {}
   }
   async function loadPricing(box) {
     box.innerHTML = `<div class="msg">加载中…</div>`;
@@ -225,8 +243,8 @@
         <td><b>${esc(e.model_name)}</b></td>
         <td>${fmt(c.ModelRatio)}</td><td>${fmt(c.CompletionRatio)}</td>
         <td>${usdFmt(inUsd)}</td><td>${usdFmt(outUsd)}</td>
-        <td style="color:#6b6577">${modelCosts[e.model_name] != null ? "$" + modelCosts[e.model_name] : "—"}</td>
-        <td>${inUsd != null && modelCosts[e.model_name] != null ? ((inUsd - modelCosts[e.model_name]) / inUsd * 100).toFixed(0) + "%" : "—"}</td>
+        <td style="color:#6b6577">${(() => { const c = costOf(e.model_name); return c ? `$${c.in ?? "—"}/${c.out ?? "—"}` : "—"; })()}</td>
+        <td>${(() => { const mg = marginOf(e.model_name, inUsd, outUsd, ioRatios[e.model_name]); return mg != null ? (mg * 100).toFixed(0) + "%" : "—"; })()}</td>
         <td>${fmt(c.ModelPrice)}</td>
         <td><div class="ops" style="justify-content:flex-end"><button class="btn ghost p-edit">编辑</button></div></td>`;
       tr.querySelector(".p-edit").onclick = () => editPricing(e);
@@ -248,7 +266,7 @@
     const inp = (id, label, cur, w) => `<label style="font-size:12px;color:var(--muted)">${label}<input id="${id}" value="${cur === "" ? "" : cur}" placeholder="留空=清除" style="width:${w || 120}px;margin-left:6px;height:32px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px"></label>`;
     ed.innerHTML = `<div class="editor">
       <div class="hint">「${esc(entry.model_name)}」 直接按单价定价($/1M tokens),保存时自动换算倍率</div>
-      <div class="row">${inp("pv-in", "输入价 $/1M", inP)}${inp("pv-out", "输出价 $/1M", outP, 130)}${inp("pv-cost", "成本价 $/1M(上游)", modelCosts[entry.model_name] ?? "", 150)}${inp("pv-p", "固定价格$/次", c.ModelPrice ?? "", 150)}</div>
+      <div class="row">${inp("pv-in", "输入价 $/1M", inP)}${inp("pv-out", "输出价 $/1M", outP, 130)}${inp("pv-ci", "成本·输入 $/1M", costOf(entry.model_name)?.in ?? "", 130)}${inp("pv-co", "成本·输出 $/1M", costOf(entry.model_name)?.out ?? "", 130)}${inp("pv-p", "固定价格$/次", c.ModelPrice ?? "", 150)}</div>
       <div class="row">
         <button class="btn" id="pv-save">保存</button>
         <button class="btn ghost" id="pv-cancel">取消</button>
@@ -268,8 +286,8 @@
     ed.querySelector("#pv-cancel").onclick = () => ed.innerHTML = "";
     ed.querySelector("#pv-save").onclick = async () => {
       const num = (id) => { const v = ed.querySelector(id).value.trim(); return v === "" ? null : Number(v); };
-      const inU = num("#pv-in"), outU = num("#pv-out"), price = num("#pv-p"), cost = num("#pv-cost");
-      if (inU == null && outU == null && price == null && cost == null) { toast("至少填一项", 1); return; }
+      const inU = num("#pv-in"), outU = num("#pv-out"), price = num("#pv-p"), ci = num("#pv-ci"), co = num("#pv-co");
+      if (inU == null && outU == null && price == null && ci == null && co == null) { toast("至少填一项", 1); return; }
       if ([inU, outU, price].some((v) => v != null && (isNaN(v) || v < 0))) { toast("数值无效", 1); return; }
       if (inU != null && inU <= 0 && outU != null) { toast("输出价换算需要输入价大于 0", 1); return; }
       const pricing = {};
@@ -283,11 +301,13 @@
       if (Object.keys(pricing).length) {
         d = await api("/api/option/model_pricing", { method: "PATCH", body: JSON.stringify({ changes: [{ model_name: entry.model_name, expected_version: entry.version || "", pricing }] }) });
       }
-      if (d.success && cost != null) {
+      if (d.success && (ci != null || co != null)) {
         try {
           const t = await ensureToken(true);
-          await fetch("/mm-admin/cost", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + (t || "") }, body: JSON.stringify({ [entry.model_name]: cost }) });
-          modelCosts[entry.model_name] = cost;
+          const prev = costOf(entry.model_name) || {};
+          const cv = { in: ci != null ? ci : prev.in, out: co != null ? co : prev.out };
+          await fetch("/mm-admin/cost", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + (t || "") }, body: JSON.stringify({ [entry.model_name]: cv }) });
+          modelCosts[entry.model_name] = cv;
         } catch (_) {}
       }
       btn.disabled = false;
@@ -511,12 +531,14 @@
       const iu = usd1m(e, "in"), ou = usd1m(e, "out");
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
-      const cost = modelCosts[m];
+      const cost = costOf(m);
       const gIn = iu != null ? iu * ratio : null;
-      const margin = gIn != null && cost != null ? ((gIn - cost) / gIn * 100).toFixed(0) + "%" : "—";
+      const gOut = ou != null ? ou * ratio : null;
+      const mg = marginOf(m, gIn, gOut, ioRatios[m]);
+      const margin = mg != null ? (mg * 100).toFixed(0) + "%" : "—";
       tr.innerHTML = `<td><b>${esc(m)}</b></td><td class="chips-td"></td>
         <td>${f(iu)}</td><td>${f(ou)}</td>
-        <td style="color:#6b6577">${cost != null ? "$" + cost : "—"}</td>
+        <td style="color:#6b6577">${cost ? `$${cost.in ?? "—"}/${cost.out ?? "—"}` : "—"}</td>
         <td style="color:#b04a2f;font-weight:700">${gIn != null ? f(gIn) : "—"}</td>
         <td style="font-weight:700;color:${margin !== "—" && Number(margin.replace("%", "")) < 20 ? "#b04a2f" : "#1d7a4a"}">${margin}</td>`;
       const chips = tr.querySelector(".chips-td");
