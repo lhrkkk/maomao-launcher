@@ -488,7 +488,7 @@
       head.innerHTML = `<b style="font-size:13px">${esc(c.name)}</b><span class="hint">${models.length} 个模型 · ${c.status === 1 ? "启用" : "停用"}</span>`;
       blk.appendChild(head);
       const mtab = document.createElement("table");
-      mtab.innerHTML = `<thead><tr><th>模型</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>本组输入价</th></tr></thead><tbody></tbody>`;
+      mtab.innerHTML = `<thead><tr><th>模型</th><th>输入价 $/1M</th><th>输出价 $/1M</th><th>本组输入价</th><th></th></tr></thead><tbody></tbody>`;
       const mtb = mtab.querySelector("tbody");
       models.sort().forEach((m) => {
         const e = D.cfgMap[m] || { model_name: m, version: D.emptyVer, configured: {} };
@@ -496,8 +496,21 @@
         const tr = document.createElement("tr");
         tr.style.cursor = "pointer";
         tr.innerHTML = `<td><b>${esc(m)}</b></td><td>${f(iu)}</td><td>${f(ou)}</td>
-          <td style="color:#b04a2f;font-weight:700">${iu != null ? f(iu * ratio) : "—"}</td>`;
+          <td style="color:#b04a2f;font-weight:700">${iu != null ? f(iu * ratio) : "—"}</td>
+          <td style="text-align:right"><button class="btn warn" style="height:26px" title="从渠道移除该模型">×</button></td>`;
         tr.onclick = () => editPricing(e);
+        tr.querySelector("button").onclick = async (ev) => {
+          ev.stopPropagation();
+          if (!confirm(`从「${c.name}」移除模型 ${m}?`)) return;
+          const full = await api("/api/channel/" + c.id);
+          if (!full.success) { toast(full.message || "读取渠道失败", 1); return; }
+          const ch = full.data;
+          ch.models = String(ch.models || "").split(",").map((x) => x.trim()).filter(Boolean).filter((x) => x !== m).join(",");
+          delete ch.status;
+          const d = await api("/api/channel/", { method: "PUT", body: JSON.stringify(ch) });
+          toast(d.success ? `已移除 ${m}` : d.message || "失败", !d.success);
+          if (d.success) loadWorkbench(box);
+        };
         mtb.appendChild(tr);
       });
       blk.appendChild(mtab);
@@ -511,13 +524,33 @@
 
     // 添加模型到组内渠道
     const addM = document.createElement("div"); addM.className = "editor"; addM.style.marginTop = "14px";
-    addM.innerHTML = `<div class="hint">往本组渠道追加模型</div>
+    addM.innerHTML = `<div class="hint">往本组渠道追加模型(输入过滤候选;↻ 从上游实时拉取该渠道支持的模型)</div>
       <div class="row">
-        <input id="wb-mn" placeholder="模型名(与上游一致)" style="flex:1;min-width:180px;height:32px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px">
+        <input id="wb-mn" list="wb-cand" placeholder="输入或选择模型…" style="flex:1;min-width:180px;height:32px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px">
+        <datalist id="wb-cand"></datalist>
         <select id="wb-mc" style="height:32px;border:1px solid var(--line);border-radius:9px;padding:0 8px;font-size:12px">${inCh.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select>
+        <button class="btn ghost" id="wb-fetch" style="height:32px">↻ 从上游拉取</button>
         <button class="btn" id="wb-madd" style="height:32px">追加</button>
       </div>`;
     card.appendChild(addM);
+    const candEl = addM.querySelector("#wb-cand");
+    const renderCand = (names) => {
+      candEl.innerHTML = names.map((n) => `<option value="${esc(n)}"></option>`).join("");
+    };
+    const allModels = new Set();
+    D.channels.forEach((c) => String(c.models || "").split(",").map((x) => x.trim()).filter(Boolean).forEach((m) => allModels.add(m)));
+    renderCand([...allModels].sort());
+    addM.querySelector("#wb-fetch").onclick = async () => {
+      const cid = addM.querySelector("#wb-mc").value;
+      const btn = addM.querySelector("#wb-fetch"); btn.disabled = true; btn.textContent = "拉取中…";
+      const d = await api("/api/channel/fetch_models/" + cid);
+      btn.disabled = false; btn.textContent = "↻ 从上游拉取";
+      if (!d.success) { toast(d.message || "上游不支持模型列表查询", 1); return; }
+      const list = (Array.isArray(d.data) ? d.data : (d.data && d.data.models) || []).map(String);
+      if (!list.length) { toast("上游返回空列表", 1); return; }
+      renderCand([...new Set(list)].sort());
+      toast(`已拉取 ${list.length} 个候选模型 🐾`);
+    };
     addM.querySelector("#wb-madd").onclick = async () => {
       const name = addM.querySelector("#wb-mn").value.trim();
       const cid = addM.querySelector("#wb-mc").value;
