@@ -311,22 +311,23 @@ export default function App() {
               </div>
             </div>
             <KeysPanel account={account} onUsed={refresh} say={say} />
-            <div className="keyhint">退出应用会自动还原本机配置</div>
           </>
         ) : (
           <button
-            className="btn btn-save"
-            style={{ width: "100%", padding: "14px 16px", fontSize: 14 }}
+            className="btn btn-hero"
             onClick={() => openUrl("https://binaryworld.world/launcher-auth")}
           >
-            一键登录 · 自动配置全部工具 ↗
+            <span className="hero-ico">🐾</span> 一键登录 · 自动配置全部工具
           </button>
         )}
 
         <div className="quicklinks">
-          <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 · 控制台 ↗</a>
-          <span>·</span>
-          <a onClick={() => openUrl("https://binaryworld.world/register")}>注册账号 ↗</a>
+          <span className="ql-left">
+            <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 · 控制台 ↗</a>
+            <span>·</span>
+            <a onClick={() => openUrl("https://binaryworld.world/register")}>注册账号 ↗</a>
+          </span>
+          {account && <span className="ql-hint">退出应用自动还原</span>}
         </div>
       </div>
 

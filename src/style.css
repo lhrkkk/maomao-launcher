@@ -307,6 +307,23 @@ a { color: inherit; text-decoration: none; }
 }
 .quicklinks a { color: #d9714f; font-weight: 750; cursor: pointer; }
 .quicklinks a:hover { text-decoration: underline; }
+
+/* 未登录主按钮(品牌橙渐变) */
+.btn-hero {
+  width: 100%; border: 0; border-radius: 12px; padding: 14px 16px;
+  font-size: 14px; font-weight: 850; cursor: pointer; color: #4a2b1d;
+  background: linear-gradient(135deg, #ffb28c, #ff8d6b 55%, #f77752);
+  box-shadow: 0 8px 22px rgba(255, 141, 107, .35);
+  transition: transform .15s, box-shadow .15s;
+}
+.btn-hero:hover { box-shadow: 0 10px 26px rgba(255, 141, 107, .5); }
+.btn-hero:active { transform: scale(.98); }
+.btn-hero .hero-ico { font-size: 15px; margin-right: 2px; }
+
+/* 快捷链接行:左侧链接 + 右侧提示 */
+.quicklinks { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ql-left { display: inline-flex; align-items: center; gap: 0; }
+.ql-hint { font-size: 10px; color: #a99fb5; white-space: nowrap; }
 .tool-state.st-ok { background: var(--dark); color: #fff; }
 .tool-state.st-warn { background: #eeeaf0; color: #a8a3b4; }
 
