@@ -178,11 +178,23 @@
     const enabled = await api("/api/channel/models_enabled");
     const names = new Set(Object.keys(cfgMap));
     if (enabled.success && Array.isArray(enabled.data)) enabled.data.forEach((m) => names.add(m));
+    // 模型 → 提供它的渠道分组(取启用渠道)
+    const modelGroups = {};
+    const chs = await api("/api/channel/?p=1&page_size=100");
+    if (chs.success) {
+      const list = chs.data && (chs.data.items || chs.data) || [];
+      list.filter((c) => c.status === 1).forEach((c) => {
+        String(c.models || "").split(",").map((x) => x.trim()).filter(Boolean).forEach((m) => {
+          modelGroups[m] = modelGroups[m] || new Set();
+          String(c.group || "default").split(",").map((x) => x.trim()).filter(Boolean).forEach((g) => modelGroups[m].add(g));
+        });
+      });
+    }
     const entries = [...names].sort((a, b) => String(a).localeCompare(String(b))).map((n) => cfgMap[n] || { model_name: n, version: pricingSnap.empty_version, configured: {} });
     const card = document.createElement("div"); card.className = "card";
     card.innerHTML = `
       <div class="hint" style="margin-bottom:10px">列表 = 全部启用渠道的模型;显示 — 的未单独定价,按默认倍率计费。倍率制:<b>模型倍率</b> 1 = $0.002/千 token,补全价 = 模型倍率 × <b>补全倍率</b>;<b>固定价格</b>($/次)设置后优先于倍率。留空 = 清除该项(回到默认)。改动即时生效。</div>
-      <input id="pkw" placeholder="过滤模型名…" style="height:34px;width:220px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px;margin-bottom:10px"><table><thead><tr><th>模型</th><th>模型倍率</th><th>补全倍率</th><th>固定价格 $/次</th><th style="text-align:right">操作</th></tr></thead><tbody id="prows"></tbody></table>
+      <input id="pkw" placeholder="过滤模型名…" style="height:34px;width:220px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:13px;margin-bottom:10px"><table><thead><tr><th>分组</th><th>模型</th><th>模型倍率</th><th>补全倍率</th><th>输入价 $/1K</th><th>输出价 $/1K</th><th>固定价格 $/次</th><th style="text-align:right">操作</th></tr></thead><tbody id="prows"></tbody></table>
       <div id="pedit"></div>
       <div class="editor" style="margin-top:14px">
         <div class="hint">新增模型定价</div>
@@ -199,8 +211,15 @@
       const c = e.configured || {};
       const fmt = (v) => v == null ? "—" : (typeof v === "number" ? (v >= 100 ? Math.round(v) : +v.toFixed(4)) : v);
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td><b>${esc(e.model_name)}</b></td>
-        <td>${fmt(c.ModelRatio)}</td><td>${fmt(c.CompletionRatio)}</td><td>${fmt(c.ModelPrice)}</td>
+      const mr = typeof c.ModelRatio === "number" ? c.ModelRatio : null;
+      const cr = typeof c.CompletionRatio === "number" ? c.CompletionRatio : null;
+      const inUsd = mr != null ? mr * 0.002 : null;
+      const outUsd = mr != null ? inUsd * (cr != null ? cr : 1) : null;
+      const usdFmt = (v) => v == null ? "—" : "$" + (v >= 0.01 ? v.toFixed(3) : v.toPrecision(2));
+      tr.innerHTML = `<td style="font-size:12px;color:#6b6577">${esc([...(modelGroups[e.model_name] || [])].join(",") || "—")}</td>
+        <td><b>${esc(e.model_name)}</b></td>
+        <td>${fmt(c.ModelRatio)}</td><td>${fmt(c.CompletionRatio)}</td>
+        <td>${usdFmt(inUsd)}</td><td>${usdFmt(outUsd)}</td><td>${fmt(c.ModelPrice)}</td>
         <td><div class="ops" style="justify-content:flex-end"><button class="btn ghost p-edit">编辑</button></div></td>`;
       tr.querySelector(".p-edit").onclick = () => editPricing(e);
       tr.dataset.q = String(e.model_name).toLowerCase();
@@ -271,10 +290,20 @@
       <div class="row">
         <button class="btn" id="pv-save">保存</button>
         <button class="btn ghost" id="pv-cancel">取消</button>
-        <span class="hint">至少填一项;数值无效会保存失败</span>
+        <span class="hint" id="pv-calc"></span>
       </div>
     </div>`;
     ed.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const updCalc = () => {
+      const num = (id) => { const v = ed.querySelector(id).value.trim(); return v === "" ? null : Number(v); };
+      const mr = num("#pv-r"), cr = num("#pv-c");
+      const el = ed.querySelector("#pv-calc");
+      if (mr == null) { el.textContent = "填入模型倍率后显示折算单价"; return; }
+      const inU = mr * 0.002, outU = inU * (cr != null ? cr : 1);
+      el.textContent = `折算:输入 $${inU.toFixed(4)}/1K · 输出 $${outU.toFixed(4)}/1K`;
+    };
+    ["#pv-r", "#pv-c"].forEach((id) => ed.querySelector(id) && ed.querySelector(id).addEventListener("input", updCalc));
+    updCalc();
     ed.querySelector("#pv-cancel").onclick = () => ed.innerHTML = "";
     ed.querySelector("#pv-save").onclick = async () => {
       const num = (id) => { const v = ed.querySelector(id).value.trim(); return v === "" ? null : Number(v); };
