@@ -396,6 +396,7 @@
     if (!full.success) return { ok: false, msg: full.message || "读取渠道失败" };
     const ch = full.data;
     ch.group = [...new Set(groups)].join(",") || "default";
+    delete ch.status; // 接口禁止携带 status 字段
     const d = await api("/api/channel/", { method: "PUT", body: JSON.stringify(ch) });
     return d.success ? { ok: true } : { ok: false, msg: d.message || "保存失败" };
   }
@@ -528,6 +529,7 @@
       const cur = String(ch.models || "").split(",").map((x) => x.trim()).filter(Boolean);
       if (cur.includes(name)) { toast("该渠道已有此模型", 1); return; }
       ch.models = [...cur, name].join(",");
+      delete ch.status;
       const d = await api("/api/channel/", { method: "PUT", body: JSON.stringify(ch) });
       toast(d.success ? `已把 ${name} 追加到「${c ? c.name : cid}」` : d.message || "失败", !d.success);
       if (d.success) loadWorkbench(box);
@@ -720,6 +722,7 @@
       ch.models = ed.querySelector("#mta").value.split(",").map((x) => x.trim()).filter(Boolean).join(",");
       if (!ch.models) { toast("模型列表不能为空", 1); return; }
       ch.group = ed.querySelector("#mgrp").value.split(",").map((x) => x.trim()).filter(Boolean).join(",") || "default";
+      delete ch.status;
       const btn = ed.querySelector("#msave"); btn.disabled = true;
       const d = await api("/api/channel/", { method: "PUT", body: JSON.stringify(ch) });
       btn.disabled = false;
