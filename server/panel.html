@@ -68,6 +68,7 @@ details.card > summary::-webkit-details-marker{display:none}
 .u-days{display:flex;gap:6px;margin-top:6px}
 .u-days span{flex:1;text-align:center;font-size:9.5px;color:#b3a8bd;white-space:nowrap}
 .u-models{padding:8px 22px 18px}
+.u-models summary::-webkit-details-marker{display:none}
 .u-m-title{font-size:11px;font-weight:800;color:#b3a8bd;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
 .u-m{display:grid;grid-template-columns:130px 1fr 120px;gap:12px;align-items:center;padding:5px 0}
 .u-m b{font-size:12.5px;font-weight:700;color:#433b50;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -80,7 +81,7 @@ details.card > summary::-webkit-details-marker{display:none}
 <main><div class="wrap">
 <div class="hero-row"><div><h1>控制台 <span style="color:#786bd8">🐾</span></h1><div class="sub">密钥、余额与充值，统一管理。</div></div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><details style="position:relative"><summary class="btn btn-peach" style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;user-select:none">⬇ 客户端下载 <span style="font-size:11px">▾</span></summary><div style="position:absolute;right:0;top:calc(100% + 8px);z-index:50;background:#fff;border:1px solid #ece7ee;border-radius:12px;box-shadow:0 16px 38px rgba(34,32,51,.16);padding:8px;display:flex;flex-direction:column;gap:4px;min-width:220px"><a class="btn btn-ghost" style="justify-content:flex-start" href="/Maomao-Token-1.5.5-mac-arm64.dmg" download="Maomao-Token-1.5.5-mac-arm64.dmg">macOS 版</a><a class="btn btn-ghost" style="justify-content:flex-start" href="/Maomao-Token-1.5.5-win-x64.exe" download="Maomao-Token-1.5.5-win-x64.exe">Windows 安装包</a><a class="btn btn-ghost" style="justify-content:flex-start" href="/Maomao-Token-1.5.5-win-x64.zip" download="Maomao-Token-1.5.5-win-x64.zip">Windows zip 免拦截</a></div></details><a class="btn btn-primary" href="/docs.html">开发文档 →</a></div></div>
 <div class="grid" id="panel" hidden>
-  <details class="card" style="grid-column:1/-1" open><summary class="card-h" style="cursor:pointer;list-style:none;user-select:none"><h2 style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#b3a8bd" class="fold-caret">▾</span>📈 近 7 天用量</h2><span style="display:flex;align-items:center;gap:12px"><span class="hint" id="usageHint"></span><span id="usageRange" class="u-range"></span></span></summary>
+  <details class="card" style="grid-column:1/-1" open><summary class="card-h" style="cursor:pointer;list-style:none;user-select:none"><h2 style="display:flex;align-items:center;gap:8px"><span class="fold-caret" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#fff0e9;color:#d9714f;font-size:13px;font-weight:900">▾</span>📈 近 7 天用量</h2><span style="display:flex;align-items:center;gap:12px"><span class="hint" id="usageHint"></span><span id="usageRange" class="u-range"></span></span></summary>
 <div id="usageBody" style="padding:0"><div class="empty" style="padding:14px 24px;color:#9b8f83;font-size:13px">加载中…</div></div></details>
   <div>
     <div class="card"><div class="bal-body"><div class="bal-label">BALANCE · 账户余额</div><div class="bal"><span id="bal">$0.00</span><small> USD</small></div><div class="bal-used" id="balUsed">累计已用 $0.00</div></div>
@@ -240,7 +241,7 @@ async function loadUsage(){
     + '</div><div class="u-right">'
     + '<div class="u-chart"><div class="u-yaxis">' + ticks + '</div><div class="u-plot"><div class="u-grid"></div><div class="u-bars">' + bars + '</div><div class="u-days">' + dayLabels + '</div></div></div>'
     + '</div></div>'
-    + (models ? '<div class="u-models"><div class="u-m-title">按模型 · 占' + win + '消费</div>' + models + '</div>' : '');
+    + (models ? '<details class="u-models" open><summary class="u-m-title" style="cursor:pointer;list-style:none;user-select:none;display:flex;align-items:center;gap:6px"><span style="color:#d9714f;font-weight:900">▾</span>按模型 · 占' + win + '消费</summary>' + models + '</details>' : '');
 }
 async function init(){
   await ensureToken();
