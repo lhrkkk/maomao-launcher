@@ -37,40 +37,44 @@ main{padding:42px 0 80px}
 footer{background:#29263e;color:#9f99b5;padding:30px 0;font-size:12px}.foot-inner{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
 @media(max-width:900px){.grid{grid-template-columns:1fr}.links{display:none}.hero-row{align-items:start;flex-direction:column}}
 
-/* usage card */
-.usage-top{display:flex;gap:22px;align-items:stretch;padding:20px 24px 6px;flex-wrap:wrap}
-.u-main{flex:0 0 200px;display:flex;flex-direction:column;justify-content:center}
-.u-label{font-size:10.5px;font-weight:800;letter-spacing:1.2px;color:#b3a8bd;text-transform:uppercase}
-.u-num{font-size:34px;font-weight:900;letter-spacing:-1.5px;margin:4px 0 6px;font-variant-numeric:tabular-nums}
-.u-num small{font-size:14px;color:#b3a8bd;font-weight:700;margin-left:2px}
-.u-sub{font-size:12px;color:#8a8194;display:flex;gap:12px}
-.u-sub b{color:#5b5266;font-weight:700}
-.u-chart{flex:1;min-width:260px;align-self:center;position:relative}
-
-.u-col i{display:block;width:100%;background:linear-gradient(180deg,rgba(255,141,107,.85),rgba(255,141,107,.12));border-radius:5px 5px 2px 2px;min-height:3px}
-.u-col em{position:absolute;bottom:-15px;left:50%;transform:translateX(-50%);font-style:normal;font-size:9.5px;color:#b3a8bd;white-space:nowrap}
-
-.u-models{padding:14px 24px 20px}
-.u-m-title{font-size:10.5px;font-weight:800;letter-spacing:1.2px;color:#b3a8bd;text-transform:uppercase;margin-bottom:8px}
-.u-m{display:grid;grid-template-columns:130px 1fr 110px;gap:12px;align-items:center;padding:6px 0}
-.u-m b{font-size:12.5px;font-weight:700;color:#433b50;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.u-bar{height:5px;background:#f1ecf0;border-radius:99px;overflow:hidden}
-.u-bar i{display:block;height:100%;background:linear-gradient(90deg,#ffab84,#ff8d6b);border-radius:99px}
-.u-m em{font-style:normal;font-size:11.5px;color:#8a8194;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-@media(max-width:640px){.u-main{flex:1 1 100%}}
 .u-chart{flex:1;min-width:240px;display:flex;flex-direction:column;align-self:center}
 .u-bars{display:flex;gap:5px;align-items:flex-end;height:74px}
 .u-col{flex:1;display:flex;align-items:flex-end;height:100%}
 .u-col i{display:block;width:100%;background:linear-gradient(180deg,rgba(255,141,107,.85),rgba(255,141,107,.10));border-radius:4px 4px 1px 1px;min-height:3px}
 .u-days{display:flex;gap:5px;margin-top:5px}
 .u-days span{flex:1;text-align:center;font-size:9.5px;color:#b3a8bd;white-space:nowrap}
+
+/* usage card (new-api 风格) */
+details.card > summary::-webkit-details-marker{display:none}
+.u-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid #f1ecf0}
+.u-stat{padding:16px 22px;border-right:1px solid #f1ecf0}
+.u-stat:last-child{border-right:0}
+.u-stat .u-label{font-size:11px;color:#8a8194;font-weight:700}
+.u-stat .u-num{font-size:26px;font-weight:900;letter-spacing:-1px;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.u-chart{display:flex;gap:8px;padding:16px 22px 10px}
+.u-yaxis{position:relative;width:52px;height:120px;flex-shrink:0;font-size:10px;color:#b3a8bd;font-variant-numeric:tabular-nums}
+.u-plot{flex:1;min-width:0}
+.u-bars{position:relative;display:flex;gap:6px;align-items:flex-end;height:120px}
+.u-grid{position:absolute;inset:0;background:repeating-linear-gradient(to top,transparent,transparent 29px,#f1ecf0 30px);pointer-events:none}
+.u-col{flex:1;height:100%;display:flex;align-items:flex-end;cursor:default}
+.u-col i{display:block;width:100%;max-width:34px;margin:0 auto;background:#ff8d6b;border-radius:3px 3px 0 0;min-height:2px}
+.u-days{display:flex;gap:6px;margin-top:6px}
+.u-days span{flex:1;text-align:center;font-size:9.5px;color:#b3a8bd;white-space:nowrap}
+.u-models{padding:8px 22px 18px}
+.u-m-title{font-size:11px;font-weight:800;color:#b3a8bd;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+.u-m{display:grid;grid-template-columns:130px 1fr 120px;gap:12px;align-items:center;padding:5px 0}
+.u-m b{font-size:12.5px;font-weight:700;color:#433b50;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.u-bar{height:5px;background:#f1ecf0;border-radius:99px;overflow:hidden}
+.u-bar i{display:block;height:100%;background:#ff8d6b;border-radius:99px}
+.u-m em{font-style:normal;font-size:11.5px;color:#8a8194;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+@media(max-width:640px){.u-stats{grid-template-columns:1fr}.u-m{grid-template-columns:90px 1fr 100px}}
 </style></head><body>
 <header class="site-nav"><nav class="wrap nav-inner" aria-label="主导航"><a class="brand" href="/"><span class="brand-icon"><svg width="29" height="29" viewBox="0 0 44 44" fill="none" aria-hidden="true"><path d="M8 19 9 5l10 8c2-.5 4-.6 6 0l10-8 1 14c2 4 3 8 0 12-3 6-9 8-15 8S9 37 7 31c-2-4-1-8 1-12Z" fill="#fff7ec" stroke="#31283a" stroke-width="2.5"/><path d="M14 27v1m16-1v1" stroke="#31283a" stroke-width="3.5"/><path d="m19 30 3 2 3-2" stroke="#31283a" stroke-width="2" stroke-linecap="round"/></svg></span><span class="wordmark">猫猫 <em>Token</em></span></a><div class="links"><a href="/">首页</a><a href="/pricing">模型价格</a><a href="/docs.html">开发文档</a><a href="/about">关于我们</a></div><div class="who" id="who" hidden><span class="dot"></span><span id="whoName">…</span><button class="btn-ghost" id="logoutBtn" type="button">退出</button></div></nav></header>
 <main><div class="wrap">
 <div class="hero-row"><div><h1>控制台 <span style="color:#786bd8">🐾</span></h1><div class="sub">密钥、余额与充值，统一管理。</div></div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><details style="position:relative"><summary class="btn btn-peach" style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;user-select:none">⬇ 客户端下载 <span style="font-size:11px">▾</span></summary><div style="position:absolute;right:0;top:calc(100% + 8px);z-index:50;background:#fff;border:1px solid #ece7ee;border-radius:12px;box-shadow:0 16px 38px rgba(34,32,51,.16);padding:8px;display:flex;flex-direction:column;gap:4px;min-width:220px"><a class="btn btn-ghost" style="justify-content:flex-start" href="/Maomao-Token-1.5.5-mac-arm64.dmg" download="Maomao-Token-1.5.5-mac-arm64.dmg">macOS 版</a><a class="btn btn-ghost" style="justify-content:flex-start" href="/Maomao-Token-1.5.5-win-x64.exe" download="Maomao-Token-1.5.5-win-x64.exe">Windows 安装包</a><a class="btn btn-ghost" style="justify-content:flex-start" href="/Maomao-Token-1.5.5-win-x64.zip" download="Maomao-Token-1.5.5-win-x64.zip">Windows zip 免拦截</a></div></details><a class="btn btn-primary" href="/docs.html">开发文档 →</a></div></div>
 <div class="grid" id="panel" hidden>
-  <div class="card" style="grid-column:1/-1"><div class="card-h"><h2>📈 近 7 天用量</h2><div style="display:flex;gap:10px;align-items:center"><span class="hint" id="usageHint"></span></div></div>
-<div id="usageBody" style="padding:0"><div class="empty" style="padding:14px 24px;color:#9b8f83;font-size:13px">加载中…</div></div></div>
+  <details class="card" style="grid-column:1/-1" open><summary class="card-h" style="cursor:pointer;list-style:none;user-select:none"><h2 style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#b3a8bd" class="fold-caret">▾</span>📈 近 7 天用量</h2><span class="hint" id="usageHint"></span></summary>
+<div id="usageBody" style="padding:0"><div class="empty" style="padding:14px 24px;color:#9b8f83;font-size:13px">加载中…</div></div></details>
   <div>
     <div class="card"><div class="bal-body"><div class="bal-label">BALANCE · 账户余额</div><div class="bal"><span id="bal">$0.00</span><small> USD</small></div><div class="bal-used" id="balUsed">累计已用 $0.00</div></div>
       <div class="topup"><label class="field-l" for="amt">充值金额(美元)</label><div class="amount-in"><input id="amt" type="number" min="1" step="1" value="10"/></div><div class="quick" id="quick"><button type="button">5</button><button type="button" class="on">10</button><button type="button">20</button><button type="button">50</button><button type="button">100</button></div><label class="field-l">支付方式</label><div class="quick" id="payMethods"><button type="button" class="on" data-t="alipay">支付宝</button><button type="button" data-t="wxpay">微信支付</button></div><button class="btn btn-peach btn-full" id="payBtn" type="button">充值 ↗</button><div class="bal-used" style="margin-top:12px">支持支付宝扫码，由收银台页面完成支付。</div></div>
@@ -197,22 +201,26 @@ async function loadUsage(){
       + '<div class="u-bar"><i style="width:' + pct + '%"></i></div>'
       + '<em>$' + m.usd.toFixed(4) + ' · ' + m.calls + ' 次</em></div>';
   }).join('');
-  const max = Math.max(0.000001, ...(u.daily || []).map((x) => x.usd));
-  const bars = (u.daily || []).map((x) => {
-    const h = Math.max(3, Math.round(x.usd / max * 74));
-    return '<div class="u-col" title="' + x.day + ' · $' + x.usd.toFixed(4) + ' · ' + x.calls + ' 次"><i style="height:' + h + 'px"></i></div>';
+  const pts = u.daily || [];
+  const max = Math.max(0.000001, ...pts.map((x) => x.usd));
+  const ticks = [1, 0.5, 0].map((f) => '<span style="position:absolute;right:0;bottom:' + (f * 100) + '%;transform:translateY(50%)">$' + (max * f).toFixed(3) + '</span>').join('');
+  const bars = pts.map((x) => {
+    const h = Math.max(2, Math.round(x.usd / max * 100));
+    return '<div class="u-col" title="' + x.day + ' · $' + x.usd.toFixed(4) + ' · ' + x.calls + ' 次"><i style="height:' + h + '%"></i></div>';
   }).join('');
-  const dayLabels = (u.daily || []).map((x, i) => {
-    const show = (u.daily.length <= 4) || (i === 0) || (i === u.daily.length - 1) || (i === Math.floor((u.daily.length - 1) / 2));
+  const dayLabels = pts.map((x, i) => {
+    const show = (pts.length <= 4) || i === 0 || i === pts.length - 1 || i === Math.floor((pts.length - 1) / 2);
     return '<span>' + (show ? x.day.slice(3) : '') + '</span>';
   }).join('');
+  const stat = (label, value, sub) => '<div class="u-stat"><div class="u-label">' + label + '</div><div class="u-num">' + value + '</div><div class="hint">' + sub + '</div></div>';
   box.innerHTML =
-    '<div class="usage-top">'
-    + '<div class="u-main"><div class="u-label">7 天消费</div>'
-    + '<div class="u-num">$' + u.week.usd.toFixed(2) + '<small>USD</small></div>'
-    + '<div class="u-sub"><span><b>' + u.week.calls + '</b> 次调用</span><span><b>' + (u.by_model || []).length + '</b> 个模型</span></div></div>'
-    + '<div class="u-chart"><div class="u-bars">' + bars + '</div><div class="u-days">' + dayLabels + '</div></div></div>'
-    + (models ? '<div class="u-models"><div class="u-m-title">按模型</div>' + models + '</div>' : '');
+    '<div class="u-stats">'
+    + stat('7 天消费', '$' + u.week.usd.toFixed(3), '统计配额')
+    + stat('7 天调用', String(u.week.calls), '统计计数')
+    + stat('活跃模型', String((u.by_model || []).length), '使用过的模型')
+    + '</div>'
+    + '<div class="u-chart"><div class="u-yaxis">' + ticks + '</div><div class="u-plot"><div class="u-grid"></div><div class="u-bars">' + bars + '</div><div class="u-days">' + dayLabels + '</div></div></div>'
+    + (models ? '<div class="u-models"><div class="u-m-title">按模型 · 占 7 天消费</div>' + models + '</div>' : '');
 }
 async function init(){
   await ensureToken();
