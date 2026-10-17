@@ -239,8 +239,8 @@ async function loadUsage(){
     + stat('活跃模型', String((u.by_model || []).length), '使用过的模型')
     + '</div><div class="u-right">'
     + '<div class="u-chart"><div class="u-yaxis">' + ticks + '</div><div class="u-plot"><div class="u-grid"></div><div class="u-bars">' + bars + '</div><div class="u-days">' + dayLabels + '</div></div></div>'
-    + (models ? '<div class="u-models"><div class="u-m-title">按模型 · 占' + win + '消费</div>' + models + '</div>' : '')
-    + '</div></div>';
+    + '</div></div>'
+    + (models ? '<div class="u-models"><div class="u-m-title">按模型 · 占' + win + '消费</div>' + models + '</div>' : '');
 }
 async function init(){
   await ensureToken();
