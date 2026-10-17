@@ -167,20 +167,29 @@ async function loadUsage(){
   const bars = (u.daily || []).map((x) => {
     const h = Math.max(3, Math.round(x.usd / max * 64));
     return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0" title="' + x.day + ' · $' + x.usd.toFixed(4) + ' · ' + x.calls + ' 次">' +
-      '<div style="width:100%;max-width:40px;height:' + h + 'px;background:linear-gradient(180deg,#ffb28c,#ff8d6b);border-radius:5px 5px 0 0"></div>' +
+      '<div style="width:100%;max-width:34px;height:' + h + 'px;background:linear-gradient(180deg,#ffc39e,#ff8d6b);border-radius:6px 6px 0 0"></div>' +
       '<span style="font-size:10px;color:#9b8f83">' + x.day.slice(3) + '</span></div>';
   }).join('');
-  const models = (u.by_model || []).map((m) =>
-    '<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;border-bottom:1px solid #f4f0f5"><b>' + (m.name || '—') + '</b><span style="color:#6b6577">$' + m.usd.toFixed(4) + ' · ' + m.calls + ' 次</span></div>'
-  ).join('');
+  const models = (u.by_model || []).map((m) => {
+    const pct = u.week.usd > 0 ? Math.max(3, Math.round(m.usd / u.week.usd * 100)) : 3;
+    return '<div style="padding:7px 0;border-bottom:1px solid #f4f0f5">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">'
+      + '<b style="font-size:13px">' + (m.name || '—') + '</b>'
+      + '<span class="hint">$' + m.usd.toFixed(4) + ' · ' + m.calls + ' 次</span></div>'
+      + '<div style="height:6px;border-radius:99px;background:#f1ecf0;overflow:hidden">'
+      + '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,#ffb28c,#ff8d6b);border-radius:99px"></div></div></div>';
+  }).join('');
+  const stats = [
+    ['7 天消费', '$' + u.week.usd.toFixed(3)],
+    ['7 天调用', String(u.week.calls)],
+    ['活跃模型', String((u.by_model || []).length)],
+  ].map(([l, v]) => '<div style="flex:1;min-width:120px;background:#faf7f4;border:1px solid #f1ecf0;border-radius:12px;padding:12px 16px">'
+      + '<div class="hint" style="margin:0">' + l + '</div>'
+      + '<div style="font-size:21px;font-weight:850;margin-top:2px;letter-spacing:-.5px">' + v + '</div></div>').join('');
   box.innerHTML =
-    '<div style="display:flex;gap:22px;margin-bottom:12px;flex-wrap:wrap">' +
-      '<div><div class="hint">7 天消费</div><div style="font-size:22px;font-weight:850">$' + u.week.usd.toFixed(3) + '</div></div>' +
-      '<div><div class="hint">7 天调用</div><div style="font-size:22px;font-weight:850">' + u.week.calls + '</div></div>' +
-      '<div><div class="hint">活跃模型</div><div style="font-size:22px;font-weight:850">' + (u.by_model || []).length + '</div></div>' +
-    '</div>' +
-    (bars ? '<div style="display:flex;gap:7px;align-items:flex-end;height:86px;padding:4px 2px 0;margin-bottom:10px">' + bars + '</div>' : '') +
-    (models ? '<div class="hint" style="margin:8px 0 2px">按模型(7 天)</div>' + models : '');
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' + stats + '</div>'
+    + (bars ? '<div style="display:flex;gap:6px;align-items:flex-end;height:92px;padding:6px 2px 0;margin-bottom:12px">' + bars + '</div>' : '')
+    + (models ? '<div class="hint" style="margin:10px 0 2px">按模型 · 占 7 天消费比例</div>' + models : '');
 }
 async function init(){
   await ensureToken();
