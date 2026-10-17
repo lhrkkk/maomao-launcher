@@ -46,9 +46,16 @@ footer{background:#29263e;color:#9f99b5;padding:30px 0;font-size:12px}.foot-inne
 
 /* usage card (new-api 风格) */
 details.card > summary::-webkit-details-marker{display:none}
-.u-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid #f1ecf0}
-.u-stat{padding:16px 22px;border-right:1px solid #f1ecf0}
-.u-stat:last-child{border-right:0}
+.u-wrap{display:flex;align-items:stretch}
+.u-stats{display:flex;flex-direction:column;flex:0 0 168px;border-right:1px solid #f1ecf0}
+.u-stat{padding:14px 18px;border-bottom:1px solid #f1ecf0}
+.u-stat:last-child{border-bottom:0}
+.u-right{flex:1;min-width:0}
+.u-range{display:flex;gap:3px;background:#f4f0f5;border-radius:9px;padding:3px}
+.u-range button{border:0;background:transparent;border-radius:7px;padding:4px 11px;font-size:11.5px;font-weight:800;color:#8a8194;cursor:pointer}
+.u-range button.on{background:#fff;color:#312b4f;box-shadow:0 1px 4px rgba(49,43,79,.15)}
+@media(max-width:720px){.u-wrap{flex-direction:column}.u-stats{flex-direction:row;border-right:0;border-bottom:1px solid #f1ecf0}.u-stat{flex:1;border-bottom:0;border-right:1px solid #f1ecf0}}
+
 .u-stat .u-label{font-size:11px;color:#8a8194;font-weight:700}
 .u-stat .u-num{font-size:26px;font-weight:900;letter-spacing:-1px;margin:4px 0 2px;font-variant-numeric:tabular-nums}
 .u-chart{display:flex;gap:8px;padding:16px 22px 10px}
@@ -73,7 +80,7 @@ details.card > summary::-webkit-details-marker{display:none}
 <main><div class="wrap">
 <div class="hero-row"><div><h1>控制台 <span style="color:#786bd8">🐾</span></h1><div class="sub">密钥、余额与充值，统一管理。</div></div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><details style="position:relative"><summary class="btn btn-peach" style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;user-select:none">⬇ 客户端下载 <span style="font-size:11px">▾</span></summary><div style="position:absolute;right:0;top:calc(100% + 8px);z-index:50;background:#fff;border:1px solid #ece7ee;border-radius:12px;box-shadow:0 16px 38px rgba(34,32,51,.16);padding:8px;display:flex;flex-direction:column;gap:4px;min-width:220px"><a class="btn btn-ghost" style="justify-content:flex-start" href="/Maomao-Token-1.5.5-mac-arm64.dmg" download="Maomao-Token-1.5.5-mac-arm64.dmg">macOS 版</a><a class="btn btn-ghost" style="justify-content:flex-start" href="/Maomao-Token-1.5.5-win-x64.exe" download="Maomao-Token-1.5.5-win-x64.exe">Windows 安装包</a><a class="btn btn-ghost" style="justify-content:flex-start" href="/Maomao-Token-1.5.5-win-x64.zip" download="Maomao-Token-1.5.5-win-x64.zip">Windows zip 免拦截</a></div></details><a class="btn btn-primary" href="/docs.html">开发文档 →</a></div></div>
 <div class="grid" id="panel" hidden>
-  <details class="card" style="grid-column:1/-1" open><summary class="card-h" style="cursor:pointer;list-style:none;user-select:none"><h2 style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#b3a8bd" class="fold-caret">▾</span>📈 近 7 天用量</h2><span class="hint" id="usageHint"></span></summary>
+  <details class="card" style="grid-column:1/-1" open><summary class="card-h" style="cursor:pointer;list-style:none;user-select:none"><h2 style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#b3a8bd" class="fold-caret">▾</span>📈 近 7 天用量</h2><span style="display:flex;align-items:center;gap:12px"><span class="hint" id="usageHint"></span><span id="usageRange" class="u-range"></span></span></summary>
 <div id="usageBody" style="padding:0"><div class="empty" style="padding:14px 24px;color:#9b8f83;font-size:13px">加载中…</div></div></details>
   <div>
     <div class="card"><div class="bal-body"><div class="bal-label">BALANCE · 账户余额</div><div class="bal"><span id="bal">$0.00</span><small> USD</small></div><div class="bal-used" id="balUsed">累计已用 $0.00</div></div>
@@ -130,6 +137,7 @@ function findToken(){
   return null;
 }
 let TK=null;
+let usageDays = 7;
 try{const mh=location.hash.match(/^#mmat=(.+)$/);if(mh){TK=decodeURIComponent(mh[1])||null;if(TK){try{sessionStorage.setItem('mmTk',TK)}catch(_){}}history.replaceState(null,'',location.pathname+location.search)}}catch(_){}
 async function ensureToken(force){
   if(!force&&TK)return TK;
@@ -181,7 +189,7 @@ $('elGo').addEventListener('click',doEmbedLogin);
 async function loadUsage(){
   const box = document.getElementById('usageBody');
   let t = await ensureToken(true);
-  const fetchUsage = () => fetch('/mm-admin/usage', { headers: { Authorization: 'Bearer ' + (t || '') } });
+  const fetchUsage = () => fetch('/mm-admin/usage?days=' + usageDays, { headers: { Authorization: 'Bearer ' + (t || '') } });
   let d;
   try {
     let r = await fetchUsage();
@@ -195,6 +203,7 @@ async function loadUsage(){
   const u = d.data;
   document.getElementById('usageHint').textContent =
     '今日 $' + u.today.usd.toFixed(3) + ' · ' + u.today.calls + ' 次';
+  const win = usageDays === 1 ? '今日' : usageDays >= 4000 ? '全部' : usageDays + ' 天';
   const models = (u.by_model || []).map((m) => {
     const pct = u.week.usd > 0 ? Math.max(2, Math.round(m.usd / u.week.usd * 100)) : 2;
     return '<div class="u-m"><b title="' + (m.name || '') + '">' + (m.name || '—') + '</b>'
@@ -213,14 +222,25 @@ async function loadUsage(){
     return '<span>' + (show ? x.day.slice(3) : '') + '</span>';
   }).join('');
   const stat = (label, value, sub) => '<div class="u-stat"><div class="u-label">' + label + '</div><div class="u-num">' + value + '</div><div class="hint">' + sub + '</div></div>';
+  const rangeBar = document.getElementById('usageRange');
+  if (rangeBar && !rangeBar.childElementCount) {
+    [[1, '今天'], [7, '7 天'], [30, '30 天'], [4000, '全部']].forEach(([v, l]) => {
+      const b = document.createElement('button');
+      b.textContent = l; b.dataset.d = v;
+      b.onclick = () => { usageDays = v; loadUsage(); };
+      rangeBar.appendChild(b);
+    });
+  }
+  if (rangeBar) [...rangeBar.children].forEach((b) => b.className = Number(b.dataset.d) === usageDays ? 'on' : '');
   box.innerHTML =
-    '<div class="u-stats">'
-    + stat('7 天消费', '$' + u.week.usd.toFixed(3), '统计配额')
-    + stat('7 天调用', String(u.week.calls), '统计计数')
+    '<div class="u-wrap"><div class="u-stats">'
+    + stat(win + '消费', '$' + u.week.usd.toFixed(3), '统计配额')
+    + stat(win + '调用', String(u.week.calls), '统计计数')
     + stat('活跃模型', String((u.by_model || []).length), '使用过的模型')
-    + '</div>'
+    + '</div><div class="u-right">'
     + '<div class="u-chart"><div class="u-yaxis">' + ticks + '</div><div class="u-plot"><div class="u-grid"></div><div class="u-bars">' + bars + '</div><div class="u-days">' + dayLabels + '</div></div></div>'
-    + (models ? '<div class="u-models"><div class="u-m-title">按模型 · 占 7 天消费</div>' + models + '</div>' : '');
+    + (models ? '<div class="u-models"><div class="u-m-title">按模型 · 占' + win + '消费</div>' + models + '</div>' : '')
+    + '</div></div>';
 }
 async function init(){
   await ensureToken();
