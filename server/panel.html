@@ -45,11 +45,11 @@ footer{background:#29263e;color:#9f99b5;padding:30px 0;font-size:12px}.foot-inne
 .u-num small{font-size:14px;color:#b3a8bd;font-weight:700;margin-left:2px}
 .u-sub{font-size:12px;color:#8a8194;display:flex;gap:12px}
 .u-sub b{color:#5b5266;font-weight:700}
-.u-chart{flex:1;min-width:260px;display:flex;align-items:flex-end;gap:5px;height:96px;padding-bottom:14px;position:relative}
-.u-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:default}
+.u-chart{flex:1;min-width:260px;align-self:center;position:relative}
+
 .u-col i{display:block;width:100%;background:linear-gradient(180deg,rgba(255,141,107,.85),rgba(255,141,107,.12));border-radius:5px 5px 2px 2px;min-height:3px}
 .u-col em{position:absolute;bottom:-15px;left:50%;transform:translateX(-50%);font-style:normal;font-size:9.5px;color:#b3a8bd;white-space:nowrap}
-.u-col{position:relative}
+
 .u-models{padding:14px 24px 20px}
 .u-m-title{font-size:10.5px;font-weight:800;letter-spacing:1.2px;color:#b3a8bd;text-transform:uppercase;margin-bottom:8px}
 .u-m{display:grid;grid-template-columns:130px 1fr 110px;gap:12px;align-items:center;padding:6px 0}
@@ -192,16 +192,34 @@ async function loadUsage(){
       + '<em>$' + m.usd.toFixed(4) + ' · ' + m.calls + ' 次</em></div>';
   }).join('');
   const max = Math.max(0.000001, ...(u.daily || []).map((x) => x.usd));
-  const bars = (u.daily || []).map((x) => {
-    const h = Math.max(4, Math.round(x.usd / max * 82));
-    return '<div class="u-col" title="' + x.day + ' · $' + x.usd.toFixed(4) + ' · ' + x.calls + ' 次"><i style="height:' + h + 'px"></i><em>' + x.day.slice(3) + '</em></div>';
-  }).join('');
+  const pts = (u.daily || []);
+  const W = 320, H = 96, PAD = 8;
+  const n = Math.max(pts.length, 2);
+  const stepX = (W - PAD * 2) / (n - 1);
+  const yOf = (v) => H - 8 - (v / max) * (H - 22);
+  const coords = pts.map((x, i) => [PAD + i * stepX, yOf(x.usd)]);
+  const line = coords.map(([x, y]) => x.toFixed(1) + ',' + y.toFixed(1)).join(' ');
+  const area = coords.length
+    ? 'M' + PAD + ',' + (H - 8) + ' L' + line.replace(/ /g, ' L') + ' L' + (W - PAD) + ',' + (H - 8) + ' Z'
+    : '';
+  const dots = coords.map(([x, y], i) =>
+    '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3" fill="#fff" stroke="#ff8d6b" stroke-width="2"><title>' + pts[i].day + ' · $' + pts[i].usd.toFixed(4) + ' · ' + pts[i].calls + ' 次</title></circle>'
+  ).join('');
+  const labels = pts.length > 1 ? '<text x="' + PAD + '" y="' + (H - 0.5) + '" font-size="8.5" fill="#b3a8bd">' + pts[0].day.slice(3) + '</text>'
+    + '<text x="' + (W - PAD) + '" y="' + (H - 0.5) + '" font-size="8.5" fill="#b3a8bd" text-anchor="end">' + pts[pts.length - 1].day.slice(3) + '</text>' : '';
+  const svg = pts.length
+    ? '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="width:100%;height:96px;display:block">'
+      + '<defs><linearGradient id="ug" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8d6b" stop-opacity=".28"/><stop offset="1" stop-color="#ff8d6b" stop-opacity="0"/></linearGradient></defs>'
+      + (area ? '<path d="' + area + '" fill="url(#ug)"></path>' : '')
+      + '<polyline points="' + line + '" fill="none" stroke="#ff8d6b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline>'
+      + dots + labels + '</svg>'
+    : '';
   box.innerHTML =
     '<div class="usage-top">'
     + '<div class="u-main"><div class="u-label">7 天消费</div>'
     + '<div class="u-num">$' + u.week.usd.toFixed(2) + '<small>USD</small></div>'
     + '<div class="u-sub"><span><b>' + u.week.calls + '</b> 次调用</span><span><b>' + (u.by_model || []).length + '</b> 个模型</span></div></div>'
-    + '<div class="u-chart">' + bars + '</div></div>'
+    + '<div class="u-chart">' + svg + '</div></div>'
     + (models ? '<div class="u-models"><div class="u-m-title">按模型</div>' + models + '</div>' : '');
 }
 async function init(){
