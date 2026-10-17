@@ -89,6 +89,54 @@ class H(BaseHTTPRequestHandler):
         return raw[3:] if raw.startswith("sk-") else raw
 
     def do_GET(self):
+        if self.path.split("?")[0] == "/mm-admin/usage":
+            auth = self.headers.get("Authorization", "")
+            token = auth[7:].strip() if auth.startswith("Bearer ") else ""
+            uid = None
+            if token:
+                try:
+                    req = urllib.request.Request(NEWAPI + "/api/user/self", headers={"Authorization": "Bearer " + token})
+                    with urllib.request.urlopen(req, timeout=8) as r:
+                        d = json.loads(r.read().decode())
+                    if d.get("success") and d.get("data"):
+                        uid = int(d["data"].get("id", 0))
+                except Exception:
+                    uid = None
+            if not uid:
+                self._send(403, {"success": False, "message": "请先登录"}); return
+            import time as _t
+            now = int(_t.time())
+            since = now - 7 * 86400
+            today0 = int(_t.mktime(_t.strptime(_t.strftime("%Y-%m-%d"), "%Y-%m-%d")))
+            try:
+                with db_conn() as db:
+                    raw_daily = dict()
+                    for (d, c, q) in db.execute(
+                        "SELECT strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') d, COUNT(*), SUM(quota) "
+                        "FROM logs WHERE type=2 AND user_id=? AND created_at>=? GROUP BY d ORDER BY d", (uid, since)):
+                        raw_daily[d] = (c, q or 0)
+                    import datetime as _dt
+                    daily = []
+                    for i in range(7, -1, -1):
+                        day = (_dt.date.today() - _dt.timedelta(days=i)).strftime("%Y-%m-%d")
+                        c, q = raw_daily.get(day, (0, 0))
+                        daily.append((day[5:], c, q))
+                    by_model = db.execute(
+                        "SELECT model_name, COUNT(*), SUM(quota) FROM logs WHERE type=2 AND user_id=? AND created_at>=? "
+                        "GROUP BY model_name ORDER BY SUM(quota) DESC LIMIT 6", (uid, since)).fetchall()
+                    t = db.execute("SELECT COUNT(*), COALESCE(SUM(quota),0) FROM logs WHERE type=2 AND user_id=? AND created_at>=?",
+                                   (uid, today0)).fetchone()
+                    tot = db.execute("SELECT COUNT(*), COALESCE(SUM(quota),0) FROM logs WHERE type=2 AND user_id=? AND created_at>=?",
+                                     (uid, since)).fetchone()
+                self._send(200, {"success": True, "data": {
+                    "today": {"calls": t[0], "usd": t[1] / 500000},
+                    "week": {"calls": tot[0], "usd": tot[1] / 500000},
+                    "daily": [{"day": d, "calls": c, "usd": (q or 0) / 500000} for (d, c, q) in daily],
+                    "by_model": [{"name": n or "—", "calls": c, "usd": (q or 0) / 500000} for (n, c, q) in by_model],
+                }})
+            except Exception as e:
+                self._send(500, {"success": False, "message": str(e)})
+            return
         if self.path.split("?")[0] == "/mm-admin/tokens":
             raw = self._bearer_key()
             row = user_of_key(raw) if raw else None
