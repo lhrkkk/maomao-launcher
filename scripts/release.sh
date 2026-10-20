@@ -106,5 +106,9 @@ for f in mac-arm64.dmg mac-arm64.app.tar.gz win-x64.exe win-x64.zip; do
   curl -s -o /dev/null -w "Maomao-Token-$VER-$f: %{http_code} %{content_type}\n" -r 0-0 "https://binaryworld.world/Maomao-Token-$VER-$f"
 done
 curl -s -o /dev/null -w "latest.json: %{http_code} %{content_type}\n" https://binaryworld.world/latest.json
+# 网站仓库规矩:改了被跟踪文件(页面版本链接、latest.json)要在服务器上提交推送;产物已被 .gitignore 挡住
+git add -A
+git diff --cached --quiet || git commit -qm "release: v$VER 页面链接与更新清单" 
+git push -q origin main 2>/dev/null || true
 EOS
 echo "RELEASE-$VER-DONE"
