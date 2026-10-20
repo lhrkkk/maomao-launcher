@@ -155,14 +155,28 @@ fn find_app(candidates: &[&str]) -> Option<String> {
 #[cfg(target_os = "windows")]
 fn find_app(candidates: &[&str]) -> Option<String> {
     use std::env;
-    // 返回可启动的完整 exe 路径:覆盖 MSIX/NSIS/官方安装器三类位置
+    // 返回可启动的完整 exe 路径:MSIX 别名 / Programs / Squirrel(Electron 默认布局,app-版本子目录)
+    // / 官方安装器 / Program Files,最后开始菜单快捷方式兜底
     let mut probes: Vec<PathBuf> = vec![];
     if let Ok(local) = env::var("LOCALAPPDATA") {
-        let l = PathBuf::from(local);
+        let l = PathBuf::from(&local);
         for name in candidates {
             probes.push(l.join("Microsoft").join("WindowsApps").join(format!("{name}.exe")));
             probes.push(l.join("Programs").join(name).join(format!("{name}.exe")));
             probes.push(l.join("Programs").join(format!("{name}.exe")));
+            probes.push(l.join(name).join(format!("{name}.exe"))); // Squirrel 顶层
+            if let Ok(rd) = fs::read_dir(l.join(name)) {
+                let mut vers: Vec<PathBuf> = rd.filter_map(|e| e.ok()).map(|e| e.path())
+                    .filter(|p| p.file_name()
+                        .map(|f| f.to_string_lossy().to_lowercase().starts_with("app-"))
+                        .unwrap_or(false))
+                    .filter(|p| p.is_dir())
+                    .collect();
+                vers.sort(); // app-0.x 版本号排序,取最新
+                if let Some(v) = vers.last() {
+                    probes.push(v.join(format!("{name}.exe")));
+                }
+            }
         }
         if candidates.iter().any(|c| *c == "Claude") {
             probes.push(l.join("AnthropicClaude").join("claude.exe"));
@@ -174,7 +188,44 @@ fn find_app(candidates: &[&str]) -> Option<String> {
             probes.push(PathBuf::from(root).join(format!("{name}.exe")));
         }
     }
-    probes.into_iter().find(|p| p.exists()).map(|p| p.to_string_lossy().to_string())
+    if let Some(p) = probes.into_iter().find(|p| p.exists()) {
+        return Some(p.to_string_lossy().to_string());
+    }
+    start_menu_shortcut(candidates)
+}
+
+/// 开始菜单快捷方式兜底:找到含应用名的 .lnk(安装器几乎都会建);start 命令可直接运行 .lnk
+#[cfg(target_os = "windows")]
+fn start_menu_shortcut(candidates: &[&str]) -> Option<String> {
+    use std::env;
+    use std::path::Path;
+    let mut roots: Vec<PathBuf> = vec![];
+    if let Ok(appdata) = env::var("APPDATA") {
+        roots.push(PathBuf::from(appdata).join("Microsoft").join("Windows").join("Start Menu").join("Programs"));
+    }
+    roots.push(PathBuf::from("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs"));
+    fn scan(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
+        let rd = fs::read_dir(dir).ok()?;
+        let mut entries: Vec<PathBuf> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+        entries.sort();
+        for p in entries {
+            if p.is_dir() {
+                if let Some(hit) = scan(&p, candidates) { return Some(hit); }
+            } else if let Some(fname) = p.file_name().map(|f| f.to_string_lossy().to_lowercase()) {
+                if fname.ends_with(".lnk")
+                    && candidates.iter().any(|c| fname.contains(&c.to_lowercase())) {
+                    return Some(p);
+                }
+            }
+        }
+        None
+    }
+    for r in roots {
+        if let Some(lnk) = scan(&r, candidates) {
+            return Some(lnk.to_string_lossy().to_string());
+        }
+    }
+    None
 }
 
 // ---------- 状态 ----------
