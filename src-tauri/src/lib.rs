@@ -427,8 +427,7 @@ fn apply_configs(key: &str) -> Result<(), String> {
          model_provider = \"maomao\"\n\
          model = \"{codex_model}\"\n\
          model_catalog_json = {}\n\
-         model_reasoning_effort = \"high\"\n\
-         disable_response_storage = true\n\n\
+         model_reasoning_effort = \"high\"\n\n\
          [model_providers.maomao]\n\
          name = \"maomao\"\n\
          base_url = \"{BASE_OPENAI}\"\n\
