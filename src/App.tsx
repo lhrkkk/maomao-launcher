@@ -89,7 +89,7 @@ function InviteCard({ say, onClaimed }: { say: (t: string) => void; onClaimed: (
               () => say(link),
             );
           }} title="点击复制邀请链接">{info.aff_code}</div>
-          <div className="keyhint">已邀请 <b>{info.aff_count}</b> 人 · 待结提成 <b>${info.aff_usd.toFixed(2)}</b><br />点击邀请码复制完整链接,好友注册消费提成自动进余额</div>
+          <div className="keyhint">已邀请 <b>{info.aff_count}</b> 人 · 待结提成 <b>${info.aff_usd.toFixed(2)}</b><br />点击邀请码复制完整链接,好友注册消费提成累计为待结,满 $1 可转入余额</div>
           {info.aff_usd >= 1 && (
             <button className="btn btn-save" style={{ width: "100%", height: 32, marginTop: 8 }} disabled={busy} onClick={claim}>
               {busy ? "转入中…" : `转入余额($${info.aff_usd.toFixed(2)})`}
