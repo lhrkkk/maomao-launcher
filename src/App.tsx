@@ -52,8 +52,7 @@ function ModelTags({ t }: { t: TokenEntry }) {
 }
 
 const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
-const CNY = 7.2;
-const rmb = (usd: number) => "¥" + (usd * CNY).toFixed(2);
+
 
 // 最近调用:默认折叠,展开时拉取(60s 节流)
 function RecentCalls() {
@@ -79,7 +78,7 @@ function RecentCalls() {
                   <span className="rc-time">{t}</span>
                   <span className="rc-model" title={r.model_name}>{r.model_name || "—"}</span>
                   <span className="rc-tok">{r.prompt_tokens}/{r.completion_tokens}</span>
-                  <span className="rc-usd">¥{(r.usd * CNY).toFixed(3)}</span>
+                  <span className="rc-usd">¥{(r.usd * cny).toFixed(3)}</span>
                 </div>
               );
             })}
@@ -167,6 +166,14 @@ export default function App() {
   const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(null);
   const [upd, setUpd] = useState<Update | null>(null);
   const [bal, setBal] = useState<{ quota_usd: number; used_usd: number } | null>(null);
+  const [cny, setCny] = useState(7.2);
+  const rmb = (usd: number) => "¥" + (usd * cny).toFixed(2);
+  useEffect(() => {
+    fetch("https://binaryworld.world/mm-admin/rate")
+      .then((r) => r.json())
+      .then((d) => { if (d?.data?.value) setCny(d.data.value); })
+      .catch(() => {});
+  }, []);
   const [tk, setTk] = useState(true);
   const [updPct, setUpdPct] = useState(-1);
   const [busy, setBusy] = useState(false);
@@ -346,11 +353,11 @@ export default function App() {
               <button className="btn-logout" onClick={doLogout}>退出并还原</button>
             </div>
             <div className="statgrid">
-              <div className={`statcard balcard ${bal && bal.quota_usd * CNY < 7 ? "low" : ""}`}>
+              <div className={`statcard balcard ${bal && bal.quota_usd * cny < 7 ? "low" : ""}`}>
                 <span className="lbl">余额</span>
                 {bal
                   ? <span className="val"><b>{rmb(bal.quota_usd)}</b><i className="bal-usd">${bal.quota_usd.toFixed(2)}</i>
-                      {bal.quota_usd * CNY < 7 && <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 充值</a>}</span>
+                      {bal.quota_usd * cny < 7 && <a onClick={() => openUrl("https://binaryworld.world/panel")}>⚠ 充值</a>}</span>
                   : <span className="val">—</span>}
               </div>
               <div className="statcard tkcard">
