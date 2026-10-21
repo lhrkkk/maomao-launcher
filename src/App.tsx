@@ -55,15 +55,27 @@ function ModelTags({ t }: { t: TokenEntry }) {
 const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
 
 
-// 邀请卡:默认折叠,展示邀请码 + 已邀人数 + 待结提成
-function InviteCard({ say }: { say: (t: string) => void }) {
+// 邀请卡:默认折叠,展示邀请码 + 已邀人数 + 待结提成(可转入余额)
+function InviteCard({ say, onClaimed }: { say: (t: string) => void; onClaimed: () => Promise<void> }) {
   const [info, setInfo] = useState<InviteInfo | null>(null);
+  const [busy, setBusy] = useState(false);
   const lastLoad = useRef(0);
   const load = async () => {
     if (Date.now() - lastLoad.current < 60_000) return;
     lastLoad.current = Date.now();
     try { setInfo(await invoke<InviteInfo>("invite_info")); }
     catch { setInfo(null); }
+  };
+  const claim = async () => {
+    setBusy(true);
+    try {
+      await invoke("invite_claim");
+      say("提成已转入余额 🐾");
+      lastLoad.current = 0;
+      await load();
+      await onClaimed();
+    } catch (e) { say(`${e}`); }
+    setBusy(false);
   };
   return (
     <details className="rcfold" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
@@ -78,6 +90,11 @@ function InviteCard({ say }: { say: (t: string) => void }) {
             );
           }} title="点击复制邀请链接">{info.aff_code}</div>
           <div className="keyhint">已邀请 <b>{info.aff_count}</b> 人 · 待结提成 <b>${info.aff_usd.toFixed(2)}</b><br />点击邀请码复制完整链接,好友注册消费提成自动进余额</div>
+          {info.aff_usd >= 1 && (
+            <button className="btn btn-save" style={{ width: "100%", height: 32, marginTop: 8 }} disabled={busy} onClick={claim}>
+              {busy ? "转入中…" : `转入余额($${info.aff_usd.toFixed(2)})`}
+            </button>
+          )}
         </div>
       )}
     </details>
@@ -399,7 +416,7 @@ export default function App() {
             </div>
             <KeysPanel account={account} onUsed={refresh} say={say} />
             <RecentCalls cny={cny} />
-            <InviteCard say={say} />
+            <InviteCard say={say} onClaimed={refresh} />
           </>
         ) : (
           <button

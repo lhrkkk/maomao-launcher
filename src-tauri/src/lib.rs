@@ -723,6 +723,26 @@ pub struct InviteInfo {
 }
 
 #[tauri::command]
+fn invite_claim() -> Result<Balance, String> {
+    let key = stored_key()?;
+    let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
+    let resp = client.post(format!("{SITE}/mm-admin/invite-claim"))
+        .header("Authorization", format!("Bearer {key}"))
+        .send().map_err(|e| format!("请求失败:{e}"))?;
+    if resp.status() == 400 {
+        let v: serde_json::Value = resp.json().unwrap_or_default();
+        return Err(v.get("message").and_then(|m| m.as_str()).unwrap_or("待结提成不足 $1").to_string());
+    }
+    if resp.status() != 200 { return Err("转入失败,请稍后再试".into()); }
+    let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
+    if !api_success(&v) { return Err(format!("转入失败:{}", api_error(&v))); }
+    Ok(Balance {
+        quota_usd: v.pointer("/data/quota_usd").and_then(|x| x.as_f64()).unwrap_or(0.0),
+        used_usd: 0.0,
+    })
+}
+
+#[tauri::command]
 fn invite_info() -> Result<InviteInfo, String> {
     let resp = mm_get("/mm-admin/invite-key")?;
     if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
@@ -1103,7 +1123,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 
