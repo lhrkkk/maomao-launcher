@@ -16,7 +16,7 @@ VER="${VER:?set VER=1.5.6}"
 export PATH="$HOME/.rustup/toolchains/1.95-x86_64-apple-darwin/bin:/opt/homebrew/bin:$PATH"
 export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/maomao-updater.key)"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
-cd ~/ops/maomao-launcher
+cd ~/projects/maomao-launcher
 
 echo "=== Mac build ==="
 if ! COREPACK_INTEGRITY_KEYS=0 pnpm tauri build --target aarch64-apple-darwin > "/tmp/macbuild-$VER.log" 2>&1; then
