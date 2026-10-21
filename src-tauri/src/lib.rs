@@ -675,6 +675,38 @@ fn takeover(app: tauri::AppHandle, on: bool) -> Result<(), String> {
     Ok(())
 }
 
+// ---------- 最近调用 ----------
+
+#[derive(Serialize, Clone)]
+pub struct RecentCall {
+    pub created_at: i64,
+    pub model_name: String,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub usd: f64,
+}
+
+#[tauri::command]
+fn recent_calls() -> Result<Vec<RecentCall>, String> {
+    let resp = mm_get("/mm-admin/log-key")?;
+    if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
+    let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
+    if !api_success(&v) { return Err(format!("获取调用记录失败:{}", api_error(&v))); }
+    Ok(v.pointer("/data")
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|x| RecentCall {
+            created_at: x.get("created_at").and_then(|v| v.as_i64()).unwrap_or(0),
+            model_name: x.get("model_name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            prompt_tokens: x.get("prompt_tokens").and_then(|v| v.as_i64()).unwrap_or(0),
+            completion_tokens: x.get("completion_tokens").and_then(|v| v.as_i64()).unwrap_or(0),
+            usd: x.get("usd").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        })
+        .collect())
+}
+
 // ---------- 账户余额 ----------
 
 #[derive(Serialize)]
@@ -1051,7 +1083,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 

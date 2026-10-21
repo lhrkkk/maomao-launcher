@@ -392,3 +392,19 @@ a { color: inherit; text-decoration: none; }
 @keyframes fadein { from { opacity: 0 } to { opacity: 1 } }
 @keyframes pop { from { opacity: 0; transform: scale(.94) translateY(8px) } to { opacity: 1; transform: none } }
 
+
+/* 最近调用(app) */
+.rcfold { margin-top: 12px; }
+.rcfold summary { list-style: none; cursor: pointer; display: flex; align-items: center; font-size: 12.5px; font-weight: 800; color: #4a4356; user-select: none; }
+.rcfold summary::-webkit-details-marker { display: none; }
+.rcfold .rc-caret { margin-left: auto; color: #d9714f; font-size: 14px; transition: transform .18s; }
+.rcfold[open] .rc-caret { transform: rotate(180deg); }
+.rclist { display: flex; flex-direction: column; margin-top: 6px; max-height: 240px; overflow-y: auto; }
+.rclist::-webkit-scrollbar { width: 4px; }
+.rclist::-webkit-scrollbar-thumb { background: #e0dae6; border-radius: 99px; }
+.rcrow { display: grid; grid-template-columns: 66px 1fr auto auto; gap: 8px; padding: 6px 2px; border-bottom: 1px solid #f4f0f5; font-size: 11px; align-items: baseline; }
+.rcrow:last-child { border-bottom: 0; }
+.rc-time { color: #9b8f83; }
+.rc-model { font-weight: 700; color: #312b4f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-tok { color: #857f95; }
+.rc-usd { color: #b04a2f; font-weight: 700; }

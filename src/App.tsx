@@ -31,6 +31,7 @@ interface Tool {
 }
 interface LoginInfo { username: string; key_masked: string; key?: string; can_manage?: boolean; token_id?: number | null; access_token?: string }
 interface TokenEntry { id: number; name: string; key_masked: string; status: number; model_limits_enabled: boolean; model_limits: string }
+interface RecentCall { created_at: number; model_name: string; prompt_tokens: number; completion_tokens: number; usd: number }
 interface PendingAuth { key: string; user: string; at: string; id: number | null; mask: string }
 
 // 模型标签:无限制 = 全部;有限制 = 前 3 个 + 剩余数
@@ -51,6 +52,39 @@ function ModelTags({ t }: { t: TokenEntry }) {
 }
 
 const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
+
+// 最近调用:默认折叠,展开时拉取(60s 节流)
+function RecentCalls() {
+  const [rows, setRows] = useState<RecentCall[] | null>(null);
+  const lastLoad = useRef(0);
+  const load = async () => {
+    if (Date.now() - lastLoad.current < 60_000) return;
+    lastLoad.current = Date.now();
+    try { setRows(await invoke<RecentCall[]>("recent_calls")); }
+    catch { setRows([]); }
+  };
+  return (
+    <details className="rcfold" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
+      <summary>最近调用 <span className="rc-caret">▾</span></summary>
+      {rows === null ? <div className="keyhint">加载中…</div>
+        : rows.length === 0 ? <div className="keyhint">还没有调用记录</div>
+        : <div className="rclist">
+            {rows.map((r, i) => {
+              const dt = new Date(r.created_at * 1000);
+              const t = `${dt.getMonth() + 1}-${dt.getDate()} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
+              return (
+                <div key={i} className="rcrow">
+                  <span className="rc-time">{t}</span>
+                  <span className="rc-model" title={r.model_name}>{r.model_name || "—"}</span>
+                  <span className="rc-tok">{r.prompt_tokens}/{r.completion_tokens}</span>
+                  <span className="rc-usd">${r.usd.toFixed(4)}</span>
+                </div>
+              );
+            })}
+          </div>}
+    </details>
+  );
+}
 
 // 密钥管理面板:列出账号下所有 API Key，创建新 Key、切换当前使用的 Key
 function KeysPanel({ account, onUsed, say }: {
@@ -325,6 +359,7 @@ export default function App() {
               </div>
             </div>
             <KeysPanel account={account} onUsed={refresh} say={say} />
+            <RecentCalls />
           </>
         ) : (
           <button
