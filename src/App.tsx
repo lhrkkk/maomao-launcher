@@ -84,7 +84,7 @@ function InviteCard({ say }: { say: (t: string) => void }) {
 }
 
 // 最近调用:默认折叠,展开时拉取(60s 节流)
-function RecentCalls() {
+function RecentCalls({ cny }: { cny: number }) {
   const [rows, setRows] = useState<RecentCall[] | null>(null);
   const lastLoad = useRef(0);
   const load = async () => {
@@ -397,7 +397,7 @@ export default function App() {
               </div>
             </div>
             <KeysPanel account={account} onUsed={refresh} say={say} />
-            <RecentCalls />
+            <RecentCalls cny={cny} />
             <InviteCard say={say} />
           </>
         ) : (
