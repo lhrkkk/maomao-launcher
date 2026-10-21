@@ -71,12 +71,13 @@ function InviteCard({ say }: { say: (t: string) => void }) {
       {info === null ? <div className="keyhint">加载中…</div> : !info.aff_code ? <div className="keyhint">暂无邀请信息</div> : (
         <div className="invbox">
           <div className="invcode" onClick={() => {
-            navigator.clipboard?.writeText(info.aff_code).then(
-              () => say("邀请码已复制 🐾"),
-              () => say(info.aff_code),
+            const link = `https://binaryworld.world/register?aff=${info.aff_code}`;
+            navigator.clipboard?.writeText(link).then(
+              () => say("邀请链接已复制 🐾"),
+              () => say(link),
             );
-          }} title="点击复制">{info.aff_code}</div>
-          <div className="keyhint">已邀请 <b>{info.aff_count}</b> 人 · 待结提成 <b>${info.aff_usd.toFixed(2)}</b><br />好友通过你的链接注册,消费提成自动进余额</div>
+          }} title="点击复制邀请链接">{info.aff_code}</div>
+          <div className="keyhint">已邀请 <b>{info.aff_count}</b> 人 · 待结提成 <b>${info.aff_usd.toFixed(2)}</b><br />点击邀请码复制完整链接,好友注册消费提成自动进余额</div>
         </div>
       )}
     </details>
