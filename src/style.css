@@ -259,6 +259,7 @@ a { color: inherit; text-decoration: none; }
   border-radius: 10px; background: #f4f1f8; border: 1px solid #e8e2f0;
 }
 .statcard .lbl { font-size: 11px; color: #857f95; font-weight: 700; }
+.bal-usd { font-style: normal; font-size: 10px; color: #9b8f83; margin-left: 4px; }
 .statcard .val b { color: #312b4f; font-size: 14px; }
 .statcard .val a { color: #b04a2f; font-weight: 700; cursor: pointer; margin-left: 6px; font-size: 11px; }
 .balcard.low { background: #fdeae4; border-color: #f7c8b6; }
