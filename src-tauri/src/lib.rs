@@ -715,6 +715,26 @@ pub struct Balance {
     pub used_usd: f64,   // 累计已用(美元)
 }
 
+#[derive(Serialize, Clone)]
+pub struct InviteInfo {
+    pub aff_code: String,
+    pub aff_count: i64,
+    pub aff_usd: f64, // 待结提成(美元)
+}
+
+#[tauri::command]
+fn invite_info() -> Result<InviteInfo, String> {
+    let resp = mm_get("/mm-admin/invite-key")?;
+    if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
+    let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
+    if !api_success(&v) { return Err(format!("获取邀请信息失败:{}", api_error(&v))); }
+    Ok(InviteInfo {
+        aff_code: v.pointer("/data/aff_code").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        aff_count: v.pointer("/data/aff_count").and_then(|x| x.as_i64()).unwrap_or(0),
+        aff_usd: v.pointer("/data/aff_quota").and_then(|x| x.as_f64()).unwrap_or(0.0) / 500000.0,
+    })
+}
+
 #[tauri::command]
 fn get_balance() -> Result<Balance, String> {
     let resp = mm_get("/mm-admin/balance")?;
@@ -1083,7 +1103,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 

@@ -32,6 +32,7 @@ interface Tool {
 interface LoginInfo { username: string; key_masked: string; key?: string; can_manage?: boolean; token_id?: number | null; access_token?: string }
 interface TokenEntry { id: number; name: string; key_masked: string; status: number; model_limits_enabled: boolean; model_limits: string }
 interface RecentCall { created_at: number; model_name: string; prompt_tokens: number; completion_tokens: number; usd: number }
+interface InviteInfo { aff_code: string; aff_count: number; aff_usd: number }
 interface PendingAuth { key: string; user: string; at: string; id: number | null; mask: string }
 
 // 模型标签:无限制 = 全部;有限制 = 前 3 个 + 剩余数
@@ -53,6 +54,34 @@ function ModelTags({ t }: { t: TokenEntry }) {
 
 const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
 
+
+// 邀请卡:默认折叠,展示邀请码 + 已邀人数 + 待结提成
+function InviteCard({ say }: { say: (t: string) => void }) {
+  const [info, setInfo] = useState<InviteInfo | null>(null);
+  const lastLoad = useRef(0);
+  const load = async () => {
+    if (Date.now() - lastLoad.current < 60_000) return;
+    lastLoad.current = Date.now();
+    try { setInfo(await invoke<InviteInfo>("invite_info")); }
+    catch { setInfo(null); }
+  };
+  return (
+    <details className="rcfold" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
+      <summary>邀请好友 <span className="rc-caret">▾</span></summary>
+      {info === null ? <div className="keyhint">加载中…</div> : !info.aff_code ? <div className="keyhint">暂无邀请信息</div> : (
+        <div className="invbox">
+          <div className="invcode" onClick={() => {
+            navigator.clipboard?.writeText(info.aff_code).then(
+              () => say("邀请码已复制 🐾"),
+              () => say(info.aff_code),
+            );
+          }} title="点击复制">{info.aff_code}</div>
+          <div className="keyhint">已邀请 <b>{info.aff_count}</b> 人 · 待结提成 <b>${info.aff_usd.toFixed(2)}</b><br />好友通过你的链接注册,消费提成自动进余额</div>
+        </div>
+      )}
+    </details>
+  );
+}
 
 // 最近调用:默认折叠,展开时拉取(60s 节流)
 function RecentCalls() {
@@ -369,6 +398,7 @@ export default function App() {
             </div>
             <KeysPanel account={account} onUsed={refresh} say={say} />
             <RecentCalls />
+            <InviteCard say={say} />
           </>
         ) : (
           <button
