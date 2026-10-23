@@ -778,12 +778,15 @@ export default function App() {
           <div className="authcard" onClick={(e) => e.stopPropagation()}>
             <div className="authcard-title">Claude Code 模型映射</div>
             <div className="authcard-body">
-              <div className="maprow"><b>默认</b>(启动即用)→ <code>{mapInfo.main}</code></div>
-              <div className="maprow"><b>后台小模型</b> → <code>{mapInfo.small}</code></div>
-              {Object.entries(mapInfo.groups).map(([g, ms]) => (
-                <div key={g} className="maprow"><b>{g}</b> → {ms.map((m) => <code key={m} style={{ marginRight: 6 }}>{m}</code>)}</div>
-              ))}
-              <div className="keyhint" style={{ marginTop: 6 }}>在 Claude Code 里选什么名字(opus/sonnet/haiku),就走站点同名的模型</div>
+              {Object.entries(mapInfo.groups).map(([g, ms]) => {
+                const best = ms.reduce((a, b) => (newer(b, a) ? b : a), ms[0] ?? "");
+                return (
+                  <div key={g} className="maprow">选择 <b>{g}</b> → 使用 <code>{best}</code></div>
+                );
+              })}
+              <div className="maprow">默认(启动即用)→ <code>{mapInfo.main}</code></div>
+              <div className="maprow">后台小模型 → <code>{mapInfo.small}</code></div>
+              <div className="keyhint" style={{ marginTop: 6 }}>站点同名直通:每个名字对应站点同名的模型,以上为各组最新版</div>
             </div>
             <div className="authcard-acts">
               <button className="btn btn-save" onClick={() => setMapInfo(null)}>知道了</button>
