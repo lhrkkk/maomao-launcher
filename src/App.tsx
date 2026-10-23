@@ -274,7 +274,16 @@ export default function App() {
         unsubs.push(await listen<{ id: string; ok: boolean; tail: string; verb?: string }>("mm-install", (e) => {
           const verb = e.payload.verb || "安装/升级";
           setInstalling((s) => { const n = new Set(s); n.delete(e.payload.id); return n; });
-          if (e.payload.ok) { say(`${verb}完成 🐾`); refresh(); }
+          if (e.payload.ok) {
+            say(`${verb}完成 🐾`);
+            refresh();
+            // 升级后重查版本,否则「升级」按钮因旧比对结果一直显示
+            invoke<[string | null, string | null] | null>("tool_versions", { id: e.payload.id })
+              .then((v) => {
+                if (v) setVerInfo((s) => ({ ...s, [e.payload.id]: { cur: v[0] ?? undefined, latest: v[1] ?? undefined } }));
+              })
+              .catch(() => {});
+          }
           else say(`后台${verb}失败:${e.payload.tail.slice(-160) || "未知错误"}`);
         }));
       } catch {}
