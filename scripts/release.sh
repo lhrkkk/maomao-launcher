@@ -3,7 +3,7 @@
 # 用法:  VER=1.5.7 bash scripts/release.sh
 #
 # 流程: Mac 本地构建(lproj 走 resources、ad-hoc 由 tauri 完成、产物含更新签名)
-#   → Windows CI → dmg/exe/zip/tar.gz + latest.json 上传服务器 → 页面链接更新 → latest 别名刷新
+#   → Windows CI → dmg/exe/tar.gz + latest.json 上传服务器 → 页面链接更新 → latest 别名刷新
 #
 # 依赖:
 #   - ~/.tauri/maomao-updater.key          更新签名私钥(丢失则自动更新全线失效,妥善备份)
@@ -64,8 +64,7 @@ gh run download "$RID" -D "/tmp/win-dist-$VER"
 # 产物文件名自带版本号,按 $VER 精确匹配,防误拾
 cp "$(find "/tmp/win-dist-$VER" -name "*${VER}*_x64-setup.exe" | head -1)" "/tmp/Maomao-Token-$VER-win-x64.exe"
 cp "$(find "/tmp/win-dist-$VER" -name "*${VER}*_x64-setup.exe.sig" | head -1)" /tmp/maomao-win.exe.sig
-ZIP=$(find "/tmp/win-dist-$VER" -name "Maomao-Token-$VER-win-x64.zip" | head -1)
-test -n "$ZIP" && test -f /tmp/maomao-win.exe.sig && test -s "/tmp/Maomao-Token-$VER-win-x64.exe"
+test -f /tmp/maomao-win.exe.sig && test -s "/tmp/Maomao-Token-$VER-win-x64.exe"
 echo "artifacts ok"
 
 python3 - "$VER" <<'PYEOF'
@@ -93,34 +92,31 @@ B = "/opt/binaryworld-pages"
 def mb(n): return round(os.path.getsize(f"{B}/{n}") / 1048576, 1)
 dmg_m = mb(f"Maomao-Token-{ver}-mac-arm64.dmg")
 exe_m = mb(f"Maomao-Token-{ver}-win-x64.exe")
-zip_m = mb(f"Maomao-Token-{ver}-win-x64.zip")
-pat = re.compile(r"Maomao-Token-\d+\.\d+\.\d+-(mac-arm64\.dmg|win-x64\.exe|win-x64\.zip)")
+pat = re.compile(r"Maomao-Token-\d+\.\d+\.\d+-(mac-arm64\.dmg|win-x64\.exe)")
 for f in ["index.html", "embed.html", "panel.html", "docs.html"]:
     p = pathlib.Path(f"{B}/{f}"); s = p.read_text()
     s2 = pat.sub(lambda m: f"Maomao-Token-{ver}-{m.group(1)}", s)
     s2 = re.sub(r"(> macOS 版<small>)[\d.]+M", rf"\g<1>{dmg_m}M", s2)
     s2 = re.sub(r"(> Windows 版<small>)[\d.]+M", rf"\g<1>{exe_m}M", s2)
-    s2 = re.sub(r"(> Windows zip 版<small>)[\d.]+M", rf"\g<1>{zip_m}M", s2)
     s2 = re.sub(r"(macOS 版)", rf"\g<1>", s2)
-    if s2 != s: p.write_text(s2); print(f, f"updated dmg={dmg_m} exe={exe_m} zip={zip_m}")
+    if s2 != s: p.write_text(s2); print(f, f"updated dmg={dmg_m} exe={exe_m}")
     else: print(f, "no change")
 PYEOF
 
-scp -q "/tmp/Maomao-Token-$VER-win-x64.exe" "$ZIP" "/tmp/Maomao-Token-$VER-mac-arm64.dmg" "/tmp/Maomao-Token-$VER-mac-arm64.app.tar.gz" /tmp/latest.json root@binaryworld.world:/opt/binaryworld-pages/
+scp -q "/tmp/Maomao-Token-$VER-win-x64.exe" "/tmp/Maomao-Token-$VER-mac-arm64.dmg" "/tmp/Maomao-Token-$VER-mac-arm64.app.tar.gz" /tmp/latest.json root@binaryworld.world:/opt/binaryworld-pages/
 scp -q "/tmp/update-pages-$VER.py" root@binaryworld.world:/tmp/update-pages-$VER.py
 /usr/bin/ssh root@binaryworld.world "VER=$VER bash -s" <<'EOS'
 grep -q " /latest.json" /etc/caddy/Caddyfile || sed -i "s| /Maomao-Token-1.2.1-win-x64.exe| /latest.json /Maomao-Token-1.2.1-win-x64.exe|" /etc/caddy/Caddyfile
-grep -q " /Maomao-Token-$VER-win-x64.exe" /etc/caddy/Caddyfile || sed -i "s| /Maomao-Token-1.2.1-win-x64.exe| /Maomao-Token-1.2.1-win-x64.exe /Maomao-Token-$VER-mac-arm64.dmg /Maomao-Token-$VER-mac-arm64.app.tar.gz /Maomao-Token-$VER-win-x64.exe /Maomao-Token-$VER-win-x64.zip|" /etc/caddy/Caddyfile
+grep -q " /Maomao-Token-$VER-win-x64.exe" /etc/caddy/Caddyfile || sed -i "s| /Maomao-Token-1.2.1-win-x64.exe| /Maomao-Token-1.2.1-win-x64.exe /Maomao-Token-$VER-mac-arm64.dmg /Maomao-Token-$VER-mac-arm64.app.tar.gz /Maomao-Token-$VER-win-x64.exe|" /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile 2>&1 | tail -1
 systemctl reload caddy
 python3 /tmp/update-pages-$VER.py "$VER"
 cd /opt/binaryworld-pages
 ln -sf Maomao-Token-$VER-mac-arm64.dmg Maomao-Token-latest-mac-arm64.dmg
 ln -sf Maomao-Token-$VER-win-x64.exe Maomao-Token-latest-win-x64.exe
-ln -sf Maomao-Token-$VER-win-x64.zip Maomao-Token-latest-win-x64.zip
 chmod 644 "Maomao-Token-$VER-mac-arm64.app.tar.gz" latest.json 2>/dev/null || true
 sleep 1
-for f in mac-arm64.dmg mac-arm64.app.tar.gz win-x64.exe win-x64.zip; do
+for f in mac-arm64.dmg mac-arm64.app.tar.gz win-x64.exe; do
   curl -s -o /dev/null -w "Maomao-Token-$VER-$f: %{http_code} %{content_type}\n" -r 0-0 "https://binaryworld.world/Maomao-Token-$VER-$f"
 done
 curl -s -o /dev/null -w "latest.json: %{http_code} %{content_type}\n" https://binaryworld.world/latest.json

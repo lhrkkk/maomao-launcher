@@ -42,21 +42,3 @@ jobs:
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.sig
           if-no-files-found: error
-
-      - name: Package zip distribution
-        shell: pwsh
-        run: |
-          $exe = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe" | Select-Object -First 1
-          $ver = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          $name = "Maomao-Token-$ver-win-x64"
-          echo "name=$name" >> $env:GITHUB_OUTPUT
-          Copy-Item $exe.FullName "$env:TEMP\$name.exe"
-          Compress-Archive -Path "$env:TEMP\$name.exe" -DestinationPath "$PWD\$name.zip" -Force
-        id: zipname
-
-      - name: Upload zip artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: maomao-windows-zip
-          path: ${{ steps.zipname.outputs.name }}.zip
-          if-no-files-found: error
