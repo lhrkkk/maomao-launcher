@@ -1488,7 +1488,7 @@ async fn tool_versions(id: String) -> Result<Option<(Option<String>, Option<Stri
         "opencode" => "opencode",
         "openclaw" => "openclaw",
         "pi" => "pi",
-        "grok" | "hermes" => return Ok(Some((None, None))), // 无稳定版本渠道,菜单保持显示升级
+        "grok" | "hermes" => "__relay__", // 官方源被墙,最新版走站点中继,见下方 run 定义之后
         _ => return Ok(None), // 桌面版等不支持
     };
     let run = |script: String| -> Option<String> {
@@ -1506,6 +1506,17 @@ async fn tool_versions(id: String) -> Result<Option<(Option<String>, Option<Stri
         })
         .map(|s| s.to_string())
     };
+    if cmd == "__relay__" {
+        let name = id.clone();
+        let local = run(format!("{name} --version 2>/dev/null | head -2"));
+        let latest = mm_get("/mm-admin/cli-latest").ok()
+            .and_then(|r| r.json::<serde_json::Value>().ok())
+            .and_then(|v| v.pointer(&format!("/data/{name}"))
+                .and_then(|x| x.as_str())
+                .filter(|x| !x.is_empty())
+                .map(|x| x.to_string()));
+        return Ok(Some((local, latest)));
+    }
     let current = run(format!("{cmd} --version 2>/dev/null | head -2"));
     let latest = if win {
         run(format!("npm view opencode-ai version 2>nul", ).replace("opencode-ai",

@@ -546,7 +546,7 @@ export default function App() {
   const verChecked = useRef(false);
   useEffect(() => {
     if (verChecked.current) return;
-    const installed = tools.filter((t) => t.installed && t.id !== "grok" && t.id !== "hermes");
+    const installed = tools.filter((t) => t.installed);
     if (!installed.length) return;
     verChecked.current = true;
     installed.forEach((t) => {
@@ -567,8 +567,6 @@ export default function App() {
     return false;
   };
   const upgradable = (t: Tool) => {
-    // grok/hermes 无版本渠道,升级只在 ⋯ 菜单(不常显行内)
-    if (t.id === "grok" || t.id === "hermes") return false;
     const v = verInfo[t.id];
     return !!(v?.cur && v?.latest && newer(v.latest, v.cur));
   };
@@ -801,9 +799,6 @@ export default function App() {
         <>
           <div className="menu-backdrop" onClick={() => setMenuPos(null)} />
           <div className="tool-menu-pop" style={{ top: menuPos.top, left: menuPos.left }}>
-            {(menuTool.id === "grok" || menuTool.id === "hermes") && (
-              <span className="tool-menu-item" onClick={() => upgrade(menuTool)}>升级</span>
-            )}
             {menuTool.id === "claude" && (
               <span className="tool-menu-item" onClick={showMap}>模型映射</span>
             )}
