@@ -27,16 +27,17 @@ if ! COREPACK_INTEGRITY_KEYS=0 pnpm tauri build --target aarch64-apple-darwin > 
 fi
 grep -E "Finished" "/tmp/macbuild-$VER.log" | head -3
 BUNDLE="src-tauri/target/aarch64-apple-darwin/release/bundle"
-# 按 mtime 取最新(目录已清空,双保险)
-APP=$(ls -t "$BUNDLE/macos/"*.app | head -1)
-TAR=$(ls -t "$BUNDLE/macos/"*.app.tar.gz | head -1)
-DMG=$(ls -t "$BUNDLE/dmg/"*.dmg | head -1)
+# ls -d 只列名字本身(.app 是目录,不加 -d 会列出其内容);-t 按 mtime 取最新
+APP=$(ls -dt "$BUNDLE/macos/"*.app | head -1)
+TAR=$(ls -dt "$BUNDLE/macos/"*.app.tar.gz | head -1)
+DMG=$(ls -dt "$BUNDLE/dmg/"*.dmg | head -1)
 TAR_SIG="$TAR.sig"
 test -f "$DMG" && test -f "$TAR" && test -f "$TAR_SIG"
 # 产物版本断言:内部版本必须等于 $VER,不符立即中止(原子发布,杜绝旧包再混上服务器)
-TARVER=$(tar xzOf "$TAR" --include='*/Contents/Info.plist' | plutil -extract CFBundleShortVersionString raw - 2>/dev/null || echo "?")
+PLIST=$(tar tzf "$TAR" | grep 'Contents/Info.plist$' | head -1)
+TARVER=$( [ -n "$PLIST" ] && tar xzOf "$TAR" "$PLIST" 2>/dev/null | plutil -extract CFBundleShortVersionString raw - 2>/dev/null )
 if [ "$TARVER" != "$VER" ]; then
-  echo "ABORT: 更新包内部版本 $TARVER != $VER(产物拿错,拒绝上传)"; exit 1
+  echo "ABORT: 更新包内部版本 '$TARVER' != $VER(产物拿错,拒绝上传)"; exit 1
 fi
 MNT="/tmp/dmgchk-$VER"; rm -rf "$MNT"
 hdiutil attach -nobrowse -quiet "$DMG" -mountpoint "$MNT"
