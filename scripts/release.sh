@@ -19,6 +19,11 @@ export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
 cd ~/projects/maomao-launcher
 
 echo "=== Mac build ==="
+if [ -n "$SKIP_MAC" ]; then
+  # 复用 /tmp 里已验证的同版本产物(Windows-only 修复重发时省 10-20 分钟)
+  test -s "/tmp/Maomao-Token-$VER-mac-arm64.dmg" && test -s "/tmp/Maomao-Token-$VER-mac-arm64.app.tar.gz" && test -s /tmp/maomao-mac.tar.gz.sig
+  echo "SKIP_MAC: 复用 /tmp 现有 $VER Mac 产物"
+else
 # 先清空 bundle 目录:改名前残留的旧产物曾被 find 误拾,导致 1.5.17-1.5.20 的
 # 更新包(dmg 除外)内部全是 1.5.15 内容、更新器报签名版本不匹配(2026-10-24 事故)
 rm -rf src-tauri/target/aarch64-apple-darwin/release/bundle
@@ -51,6 +56,7 @@ cp "$TAR" "/tmp/Maomao-Token-$VER-mac-arm64.app.tar.gz"
 cp "$TAR_SIG" /tmp/maomao-mac.tar.gz.sig
 rm -rf "/Applications/MaoMao Token.app" "/Applications/MaoMao Power.app" && cp -R "$APP" /Applications/
 echo "MAC DONE (dmg + tar.gz + updater sig, versions verified: $TARVER/$DMGVER)"
+fi
 
 echo "=== windows CI ==="
 sleep 15
