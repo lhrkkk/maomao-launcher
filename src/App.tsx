@@ -532,13 +532,13 @@ export default function App() {
   const UNINSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi", "claude-desktop", "codex-desktop"]);
   const [menuPos, setMenuPos] = useState<{ id: string; top: number; left: number } | null>(null);
   const [installing, setInstalling] = useState<Set<string>>(new Set());
-  // Claude Code 可用模型说明卡
-  const [mapInfo, setMapInfo] = useState<string[] | null>(null);
+  // Claude Code 模型映射说明卡
+  const [mapInfo, setMapInfo] = useState<{ main: string; small: string; groups: Record<string, string[]> } | null>(null);
   const [appVer, setAppVer] = useState("");
   useEffect(() => { getVersion().then(setAppVer).catch(() => {}); }, []);
   const showMap = async () => {
     setMenuPos(null);
-    try { const r = await invoke<{ models: string[] }>("claude_model_map"); setMapInfo(r.models ?? []); }
+    try { setMapInfo(await invoke<{ main: string; small: string; groups: Record<string, string[]> }>("claude_model_map")); }
     catch (e) { say(`${e}`); }
   };
   // 工具版本信息(启动后懒检查):{cur, latest};可升级的行内直接亮"升级"按钮
@@ -776,11 +776,14 @@ export default function App() {
       {mapInfo && (
         <div className="authmask" onClick={() => setMapInfo(null)}>
           <div className="authcard" onClick={(e) => e.stopPropagation()}>
-            <div className="authcard-title">Claude Code 可用模型</div>
+            <div className="authcard-title">Claude Code 模型映射</div>
             <div className="authcard-body">
-              {mapInfo.length === 0 ? "暂未配置" : mapInfo.map((m) => (
-                <div key={m} className="maprow">· <code>{m}</code></div>
+              <div className="maprow"><b>默认</b>(启动即用)→ <code>{mapInfo.main}</code></div>
+              <div className="maprow"><b>后台小模型</b> → <code>{mapInfo.small}</code></div>
+              {Object.entries(mapInfo.groups).map(([g, ms]) => (
+                <div key={g} className="maprow"><b>{g}</b> → {ms.map((m) => <code key={m} style={{ marginRight: 6 }}>{m}</code>)}</div>
               ))}
+              <div className="keyhint" style={{ marginTop: 6 }}>在 Claude Code 里选什么名字(opus/sonnet/haiku),就走站点同名的模型</div>
             </div>
             <div className="authcard-acts">
               <button className="btn btn-save" onClick={() => setMapInfo(null)}>知道了</button>
