@@ -529,21 +529,25 @@ fn apply_configs(key: &str) -> Result<(), String> {
         serde_json::to_string(codex_catalog.to_str().unwrap_or_default()).unwrap_or_default()
     ))?;
 
-    // Grok Build:同样生成模型目录(仅 grok 系)
-    let grok_catalog = write_catalog(".grok", &acfg.grok)?;
-    write_toml({ let pp = p(&[".grok", "config.toml"])?; takeover_backup(&pp); pp }, &format!(
+    // Grok Build:自有 schema([model.X] 表),不认 codex 的 model_providers;BYOK 认证免登录
+    let mut grok_toml = format!(
         "# Managed by 猫猫 Token Launcher\n\
-         model_provider = \"maomao\"\n\
+         [models]\n\
+         default = \"maomao\"\n\n\
+         [model.maomao]\n\
          model = \"{}\"\n\
-         model_catalog_json = {}\n\n\
-         [model_providers.maomao]\n\
-         name = \"maomao\"\n\
          base_url = \"{BASE_OPENAI}\"\n\
-         wire_api = \"responses\"\n\
-         requires_openai_auth = true\n",
-        &acfg.grok_default,
-        serde_json::to_string(grok_catalog.to_str().unwrap_or_default()).unwrap_or_default()
-    ))?;
+         name = \"猫猫 {}\"\n\
+         api_key = \"{}\"\n\
+         context_window = 131072\n",
+        &acfg.grok_default, &acfg.grok_default, key
+    );
+    for m in acfg.grok.iter().filter(|m| *m != &acfg.grok_default) {
+        grok_toml.push_str(&format!(
+            "\n[model.maomao-{m}]\nmodel = \"{m}\"\nbase_url = \"{BASE_OPENAI}\"\nname = \"猫猫 {m}\"\napi_key = \"{key}\"\ncontext_window = 131072\n"
+        ));
+    }
+    write_toml({ let pp = p(&[".grok", "config.toml"])?; takeover_backup(&pp); pp }, &grok_toml)?;
     fs::write({ let pp = p(&[".grok", "auth.json"])?; takeover_backup(&pp); pp }, serde_json::to_string_pretty(&serde_json::json!({
         "OPENAI_API_KEY": key
     })).unwrap_or_default()).map_err(|e| format!("写入 auth.json 失败:{e}"))?;
