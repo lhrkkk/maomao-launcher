@@ -714,30 +714,52 @@ pub struct RecentCall {
 }
 
 #[derive(Serialize, Clone)]
-struct DailyPoint { day: String, calls: i64, usd: f64 }
+struct SeriesPoint { name: String, tokens: i64, points: Vec<i64> }
 #[derive(Serialize, Clone)]
-struct UsageData { daily: Vec<DailyPoint>, today_calls: i64, today_usd: f64 }
+struct AxisPoint { label: String, tip: String }
+#[derive(Serialize, Clone)]
+struct UsageData {
+    series: Vec<SeriesPoint>,
+    axis: Vec<AxisPoint>,
+    granularity: String,
+    week_calls: i64, week_usd: f64,
+    today_calls: i64, today_usd: f64,
+}
 
-/// 近 8 天调用量(sk-key 鉴权),app「更多」页图表用
+/// 近 8 天调用量(sk-key 鉴权),app「更多」页图表用;series/axis 与控制台同构
 #[tauri::command]
 async fn usage_daily() -> Result<UsageData, String> {
     let resp = mm_get("/mm-admin/usage?days=8")?;
     if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
     let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
     if !api_success(&v) { return Err(format!("获取调用量失败:{}", api_error(&v))); }
-    let daily = v.pointer("/data/daily")
+    let series = v.pointer("/data/series")
         .and_then(|d| d.as_array())
         .cloned()
         .unwrap_or_default()
         .into_iter()
-        .map(|x| DailyPoint {
-            day: x.get("day").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            calls: x.get("calls").and_then(|v| v.as_i64()).unwrap_or(0),
-            usd: x.get("usd").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        .map(|x| SeriesPoint {
+            name: x.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            tokens: x.get("tokens").and_then(|v| v.as_i64()).unwrap_or(0),
+            points: x.get("points").and_then(|v| v.as_array()).map(|a| a.iter().map(|p| p.as_i64().unwrap_or(0)).collect()).unwrap_or_default(),
+        })
+        .collect();
+    let axis = v.pointer("/data/axis")
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|x| AxisPoint {
+            label: x.get("label").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            tip: x.get("tip").and_then(|v| v.as_str()).unwrap_or("").to_string(),
         })
         .collect();
     Ok(UsageData {
-        daily,
+        series,
+        axis,
+        granularity: v.pointer("/data/granularity").and_then(|v| v.as_str()).unwrap_or("day").to_string(),
+        week_calls: v.pointer("/data/week/calls").and_then(|v| v.as_i64()).unwrap_or(0),
+        week_usd: v.pointer("/data/week/usd").and_then(|v| v.as_f64()).unwrap_or(0.0),
         today_calls: v.pointer("/data/today/calls").and_then(|v| v.as_i64()).unwrap_or(0),
         today_usd: v.pointer("/data/today/usd").and_then(|v| v.as_f64()).unwrap_or(0.0),
     })

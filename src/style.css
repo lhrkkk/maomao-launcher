@@ -503,3 +503,28 @@ a { color: inherit; text-decoration: none; }
   z-index: 9999;
 }
 .topcopy:hover::after { opacity: 1; transform: none; }
+
+/* 调用量图表(面板同款,app 窄屏适配) */
+.ucwrap { margin-top: 8px; }
+.uc-today { font-size: 11px; font-weight: 700; color: #857f95; margin-left: 8px; }
+.ua-lglist { display: flex; flex-wrap: wrap; gap: 0 14px; }
+.ua-lg { min-width: 84px; padding: 6px 0; }
+.ua-lg-k { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #6b6577; font-weight: 650; }
+.ua-lg-k i { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.ua-lg-n { margin-top: 3px; font-size: 16px; font-weight: 800; letter-spacing: -.5px; color: #2c2744; font-variant-numeric: tabular-nums; line-height: 1; }
+.ua-lg-n small { font-size: 10px; font-weight: 700; color: #8a8194; margin-left: 2px; }
+.ua-chart { display: flex; gap: 6px; height: 168px; }
+.ua-y { position: relative; width: 30px; flex-shrink: 0; }
+.ua-y span { position: absolute; right: 0; transform: translateY(-50%); font-size: 9px; color: #b3a8bd; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
+.ua-plot { position: relative; flex: 1; min-width: 0; border-radius: 10px; overflow: hidden; }
+.ua-plot svg { width: 100%; height: 100%; display: block; }
+.ua-x { display: flex; margin: 4px 0 0 36px; }
+.ua-x span { flex: 1; text-align: center; font-size: 9px; color: #b3a8bd; white-space: nowrap; }
+.ua-cross { position: absolute; top: 6%; bottom: 6%; width: 0; border-left: 1px dashed #c4b8c0; pointer-events: none; z-index: 1; }
+.ua-dot { position: absolute; width: 7px; height: 7px; border-radius: 50%; border: 2px solid #fff; transform: translate(-50%, -50%); pointer-events: none; z-index: 2; }
+.ua-tip { position: absolute; z-index: 3; background: #fff; border-radius: 10px; box-shadow: 0 12px 30px rgba(49,43,79,.14); padding: 8px 10px; min-width: 148px; pointer-events: none; }
+.ua-tip-d { font-size: 11px; font-weight: 750; color: #6b6577; margin-bottom: 4px; }
+.ua-tip-r { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #433b50; padding: 2px 0; }
+.ua-tip-r i { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.ua-tip-r span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ua-tip-r em { margin-left: auto; padding-left: 8px; font-style: normal; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }

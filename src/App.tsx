@@ -105,11 +105,52 @@ function InviteCard({ say, onClaimed, ak }: { say: (t: string) => void; onClaime
   );
 }
 
-// 调用量图表(近 8 天):挂载即预取,展开秒出(60s 节流)
-interface DailyPoint { day: string; calls: number; usd: number }
-interface UsageData { daily: DailyPoint[]; today_calls: number; today_usd: number }
-function UsageChart({ cny, ak }: { cny: number; ak?: string }) {
+// 调用量图表(近 8 天):与控制台 panel 同款折线+面积+模型系列,窄屏适配
+const UA_COLORS = ['#1664FF', '#1AC6FF', '#FF8A00', '#3CC780', '#7442D4', '#FFC400', '#304D77', '#B48DEB', '#009488', '#FF7DDA'];
+const fmtTok = (n: number): [string, string] => {
+  if (n >= 1e6) return [(n / 1e6).toFixed(2), "M"];
+  if (n >= 1e3) return [(n / 1e3).toFixed(2), "K"];
+  return [String(Math.round(n)), ""];
+};
+const fmtAxis = (n: number) => n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + "M" : n >= 1e3 ? (n / 1e3).toFixed(n % 1e3 ? 1 : 0) + "K" : String(Math.round(n));
+const niceMax = (v: number) => {
+  if (v <= 0) return 1;
+  const exp = Math.pow(10, Math.floor(Math.log10(v)));
+  const f = v / exp;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * exp;
+};
+// monotone 三次贝塞尔(与面板 uaCurve 同实现)
+function uaCurve(pts: Array<{ x: number; y: number }>): string {
+  const n = pts.length;
+  if (n < 2) return "";
+  const dx: number[] = [], slope: number[] = [], tan = new Array<number>(n);
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = pts[i + 1].x - pts[i].x || 1;
+    slope[i] = (pts[i + 1].y - pts[i].y) / dx[i];
+  }
+  tan[0] = slope[0]; tan[n - 1] = slope[n - 2];
+  for (let i = 1; i < n - 1; i++) tan[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (Math.abs(slope[i]) < 1e-6) { tan[i] = 0; tan[i + 1] = 0; continue; }
+    const a = tan[i] / slope[i], b = tan[i + 1] / slope[i];
+    const h = a * a + b * b;
+    if (h > 9) { const t = 3 / Math.sqrt(h); tan[i] = t * a * slope[i]; tan[i + 1] = t * b * slope[i]; }
+  }
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const c1x = pts[i].x + dx[i] / 3, c1y = pts[i].y + tan[i] * dx[i] / 3;
+    const c2x = pts[i + 1].x - dx[i] / 3, c2y = pts[i + 1].y - tan[i + 1] * dx[i] / 3;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${pts[i + 1].x.toFixed(2)} ${pts[i + 1].y.toFixed(2)}`;
+  }
+  return d;
+}
+
+interface SeriesPoint { name: string; tokens: number; points: number[] }
+interface AxisPoint { label: string; tip: string }
+interface UsageData { series: SeriesPoint[]; axis: AxisPoint[]; granularity: string; week_calls: number; week_usd: number; today_calls: number; today_usd: number }
+function UsageChart({ ak, cny }: { ak?: string; cny: number }) {
   const [data, setData] = useState<UsageData | null>(null);
+  const [hover, setHover] = useState<number | null>(null);
   const lastLoad = useRef(0);
   const load = async () => {
     if (!ak) return;
@@ -119,31 +160,70 @@ function UsageChart({ cny, ak }: { cny: number; ak?: string }) {
     catch { setData(null); }
   };
   useEffect(() => { lastLoad.current = 0; load(); }, [ak]);
-  const chart = (pick: (d: DailyPoint) => number, fmt: (n: number) => string) => {
-    if (!data) return null;
-    const vals = data.daily.map(pick);
-    const mx = Math.max(...vals, 1);
-    return (
-      <div className="ucbars">
-        {data.daily.map((d, i) => (
-          <div key={i} className="ucbar" title={`${d.day}:${fmt(vals[i])}`}>
-            <span className="ucval">{vals[i] ? fmt(vals[i]) : ""}</span>
-            <i style={{ height: Math.max(2, Math.round(vals[i] / mx * 40)) }} />
-            <span className="ucday">{d.day.slice(3)}</span>
-          </div>
-        ))}
-      </div>
-    );
-  };
+  const series = data?.series ?? [];
+  const axis = data?.axis ?? [];
+  const n = axis.length;
+  const max = niceMax(Math.max(0, ...series.map((sr) => Math.max(0, ...sr.points))));
+  const yOf = (v: number) => 6 + (1 - (max ? v / max : 0)) * 88;
+  const xOf = (i: number) => (n === 1 ? 50 : 1.5 + (i / (n - 1)) * 97);
+  let fills = "", lines = "";
+  series.forEach((sr, si) => {
+    const color = UA_COLORS[si % UA_COLORS.length];
+    const pts = sr.points.map((v, i) => ({ x: xOf(i), y: yOf(v) }));
+    const line = uaCurve(pts);
+    if (!line) return;
+    const area = line + ` L ${pts[pts.length - 1].x.toFixed(2)} 94 L ${pts[0].x.toFixed(2)} 94 Z`;
+    fills += `<path d="${area}" fill="${color}" fill-opacity="0.08"></path>`;
+    lines += `<path d="${line}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></path>`;
+  });
+  const grids = [6, 28, 50, 72, 94].map((y) => `<line x1="0" y1="${y}" x2="100" y2="${y}" stroke="#ebedf0" stroke-width="1" vector-effect="non-scaling-stroke"></line>`).join("");
+  const ticks = [1, 0.75, 0.5, 0.25, 0].map((f, i) => `<span style="top:${[6, 28, 50, 72, 94][i]}%">${fmtAxis(max * f)}</span>`).join("");
   return (
     <details className="rcfold" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
-      <summary>调用量{data && data.today_calls >= 0 ? <span className="uc-today">今日 {data.today_calls} 次 · ¥{(data.today_usd * cny).toFixed(2)}</span> : null}<span className="rc-caret">▾</span></summary>
-      {data === null ? <div className="keyhint">加载中…</div> : data.daily.length === 0 ? <div className="keyhint">暂无数据</div> : (
+      <summary>调用量{data ? <span className="uc-today">今日 {data.today_calls} 次 · ¥{(data.today_usd * cny).toFixed(2)} · 8天 ¥{(data.week_usd * cny).toFixed(2)}</span> : null}<span className="rc-caret">▾</span></summary>
+      {data === null ? <div className="keyhint">加载中…</div> : !series.length ? <div className="keyhint">暂无数据</div> : (
         <div className="ucwrap">
-          <div className="uclabel">调用次数</div>
-          {chart((d) => d.calls, (n) => `${n}`)}
-          <div className="uclabel" style={{ marginTop: 8 }}>花费</div>
-          {chart((d) => d.usd, (n) => `¥${(n * cny).toFixed(n * cny < 10 ? 1 : 0)}`)}
+          <div className="ua-lglist">
+            {series.map((sr, si) => {
+              const parts = fmtTok(sr.tokens);
+              return (
+                <div className="ua-lg" key={si}>
+                  <div className="ua-lg-k"><i style={{ background: UA_COLORS[si % UA_COLORS.length] }} />{si === 0 ? sr.name : sr.name + " 消耗"}</div>
+                  <div className="ua-lg-n">{parts[0]}{parts[1] ? <small>{parts[1]}</small> : null}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="ua-chart">
+            <div className="ua-y" dangerouslySetInnerHTML={{ __html: ticks }} />
+            <div className="ua-plot" onMouseMove={(ev) => {
+              const r = ev.currentTarget.getBoundingClientRect();
+              if (!r.width) return;
+              setHover(Math.max(0, Math.min(n - 1, Math.round(((ev.clientX - r.left) / r.width) * (n - 1)))));
+            }} onMouseLeave={() => setHover(null)}>
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" dangerouslySetInnerHTML={{ __html: grids + fills + lines }} />
+              {hover !== null && <div className="ua-cross" style={{ left: xOf(hover) + "%" }} />}
+              {hover !== null && series.map((sr, si) => (
+                <i key={si} className="ua-dot" style={{ background: UA_COLORS[si % UA_COLORS.length], left: xOf(hover) + "%", top: yOf(sr.points[hover] || 0) + "%" }} />
+              ))}
+              {hover !== null && (
+                <div className="ua-tip" style={{ left: xOf(hover) > 62 ? "auto" : xOf(hover) + 2 + "%", right: xOf(hover) > 62 ? 100 - xOf(hover) + 2 + "%" : "auto" }}>
+                  <div className="ua-tip-d">{axis[hover].tip || axis[hover].label}</div>
+                  {series.map((sr, si) => {
+                    const parts = fmtTok(sr.points[hover] || 0);
+                    return (
+                      <div className="ua-tip-r" key={si}>
+                        <i style={{ background: UA_COLORS[si % UA_COLORS.length] }} />
+                        <span>{si === 0 ? sr.name : sr.name + " 消耗"}</span>
+                        <em>{parts[0]} {parts[1]}</em>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="ua-x">{axis.map((a, i) => <span key={i}>{i === n - 1 || i % 2 === 0 ? a.label : ""}</span>)}</div>
         </div>
       )}
     </details>
@@ -294,7 +374,7 @@ export default function App() {
 
   const refresh = () =>
     invoke<{ tools: Tool[]; login: LoginInfo | null; takeover: boolean }>("get_state")
-      .then((s) => { setTools(s.tools); setAccount(s.login); setTk(s.takeover !== false); loadBalance(); })
+      .then((s) => { setTools(s.tools); setAccount(s.login); setTk(s.takeover !== false); loadBalance(true); })
       .catch(() => {});
   useEffect(() => {
     (async () => {
