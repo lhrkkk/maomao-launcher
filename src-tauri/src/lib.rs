@@ -296,7 +296,7 @@ fn tools_spec() -> Vec<(&'static str, &'static str, ToolKind, bool)> {
         ("openclaw", "OpenClaw", Cli, true),
         ("gemini", "Gemini CLI", Cli, false),
         ("hermes", "Hermes Agent", Cli, true),
-        ("pi", "Pi", Cli, false),
+        ("pi", "Pi", Cli, true),
         ("claude-desktop", "Claude 桌面版", Desktop, false),
         // Codex 桌面功能集成在 ChatGPT.app(也兼容独立 Codex.app)
         ("codex-desktop", "Codex 桌面版", Desktop, false),
@@ -318,6 +318,8 @@ fn check_configured(id: &str) -> bool {
         "openclaw" => fs::read_to_string(p(&[".openclaw", "openclaw.config.json"]).unwrap_or_default())
             .map(|s| s.contains("binaryworld.world")).unwrap_or(false),
         "hermes" => fs::read_to_string(p(&[".hermes", "config.yaml"]).unwrap_or_default())
+            .map(|s| s.contains("binaryworld.world")).unwrap_or(false),
+        "pi" => fs::read_to_string(p(&[".pi", "agent", "models.json"]).unwrap_or_default())
             .map(|s| s.contains("binaryworld.world")).unwrap_or(false),
         _ => false,
     }
@@ -395,6 +397,7 @@ struct AppCfg {
     full: Vec<String>, full_default: String,
     claude_main: String, claude_small: String,
     claude: Vec<String>,
+    pi: Vec<String>,
 }
 
 fn default_app_config() -> AppCfg {
@@ -407,6 +410,7 @@ fn default_app_config() -> AppCfg {
         full_default: "gpt-6.1-sol".into(),
         claude_main: "claude-opus-5-5".into(),
         claude: ["claude-opus-5-5", "gpt-6.1-sol", "grok-latest", "glm-5.3"].iter().map(|s| s.to_string()).collect(),
+        pi: ["glm-5.3", "gpt-6.1-sol"].iter().map(|s| s.to_string()).collect(),
         claude_small: "glm-5.3".into(),
     }
 }
@@ -438,6 +442,7 @@ fn fetch_app_config() -> AppCfg {
     c.full_default = cfg_string(&v, "full_default", &c.full_default);
     c.claude_main = cfg_string(&v, "claude_main", &c.claude_main);
     c.claude = cfg_strings(&v, "claude", &c.claude);
+    c.pi = cfg_strings(&v, "pi", &c.pi);
     c.claude_small = cfg_string(&v, "claude_small", &c.claude_small);
     c
 }
@@ -585,6 +590,21 @@ fn apply_configs(key: &str) -> Result<(), String> {
 
     // Hermes Agent:~/.hermes/config.yaml(整文件接管,退出还原)
     {
+        // Pi:~/.pi/agent/models.json 注册兼容端点(merge 保留用户其他 providers)
+        let pi_models: Vec<serde_json::Value> = acfg.pi.iter()
+            .map(|m| serde_json::json!({ "id": m }))
+            .collect();
+        merge_write_json({ let pp = p(&[".pi", "agent", "models.json"])?; takeover_backup(&pp); pp }, |v| {
+            if !v.get("providers").map(|x| x.is_object()).unwrap_or(false) {
+                v["providers"] = serde_json::json!({});
+            }
+            v["providers"]["maomao"] = serde_json::json!({
+                "baseUrl": BASE_OPENAI,
+                "api": "openai-completions",
+                "apiKey": key,
+                "models": pi_models,
+            });
+        })?;
         let hp = p(&[".hermes", "config.yaml"])?;
         takeover_backup(&hp);
         if let Some(dir) = hp.parent() {
@@ -1112,6 +1132,7 @@ fn restore_files() -> Result<(), String> {
         if let Ok(pp) = p(&[rel.0, rel.1]) { restore_or_remove(&pp); }
     }
     restore_or_remove(&p(&[".config", "opencode", "opencode.json"])?);
+    restore_or_remove(&p(&[".pi", "agent", "models.json"])?);
     let _ = fs::remove_file(p(&[".codex", "maomao-model-catalog.json"])?);
     Ok(())
 }
