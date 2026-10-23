@@ -457,7 +457,7 @@ fn apply_configs(key: &str) -> Result<(), String> {
             obj.insert("slug".into(), serde_json::json!(m));
             obj.insert("visibility".into(), serde_json::json!("list"));
             obj.insert("display_name".into(), serde_json::json!(m));
-            obj.insert("description".into(), serde_json::json!(format!("{m} · 猫猫 Token")));
+            obj.insert("description".into(), serde_json::json!(format!("{m} · 猫猫动力")));
             obj.insert("context_window".into(), serde_json::json!(131072));
             obj.insert("max_context_window".into(), serde_json::json!(131072));
             obj.insert("priority".into(), serde_json::json!(1000 + i));
@@ -517,7 +517,7 @@ fn apply_configs(key: &str) -> Result<(), String> {
         }
         v["provider"]["maomao"] = serde_json::json!({
             "npm": "@ai-sdk/openai-compatible",
-            "name": "猫猫 Token",
+            "name": "猫猫动力",
             "options": { "baseURL": BASE_OPENAI, "apiKey": key },
             "models": oc_models,
         });
@@ -1216,7 +1216,7 @@ pub fn run() {
     let menu = Menu::with_items(&app, &[&show, &claude, &codex, &quit]).expect("menu");
     let _tray = TrayIconBuilder::with_id("maomao-tray")
         .icon(app.default_window_icon().expect("icon").clone())
-        .tooltip("猫猫 Token")
+        .tooltip("猫猫动力")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => {

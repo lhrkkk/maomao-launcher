@@ -438,7 +438,7 @@ export default function App() {
 
         <div className="quicklinks">
           <span className="ql-left">
-            <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 · 控制台 ↗</a>
+            <a onClick={() => openUrl("https://binaryworld.world/panel")}>充值 · 管理 ↗</a>
             <span>·</span>
             <a onClick={() => openUrl("https://binaryworld.world/register")}>注册账号 ↗</a>
           </span>
@@ -457,7 +457,7 @@ export default function App() {
 
       <div className="viewtabs">
         <button className={`tab ${view === "home" ? "on" : ""}`} onClick={() => { setView("home"); refresh(); }}>工具</button>
-        <button className={`tab ${view === "invite" ? "on" : ""}`} onClick={() => setView("invite")}>邀请</button>
+        <button className={`tab ${view === "invite" ? "on" : ""}`} onClick={() => setView("invite")}>更多</button>
       </div>
 
       {view === "home" ? (
