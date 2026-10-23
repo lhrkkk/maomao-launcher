@@ -1174,12 +1174,93 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
         _ => None,
     };
     if let Some(path) = desktop_url {
-        open_external(&format!("{SITE}{path}"));
-        return Ok(if upgrading {
-            "已打开最新安装包,下载后覆盖安装即可升级".into()
-        } else {
-            "已开始下载安装包,请按提示完成安装".into()
+        // 桌面版:后台下载(带进度)→ 自动静默安装 → 完成事件
+        let url = format!("{SITE}{path}");
+        let idc = id.clone();
+        std::thread::spawn(move || {
+            use std::io::Read;
+            use tauri::Emitter;
+            let verb = if upgrading { "升级" } else { "安装" };
+            let fail = |t: String| {
+                let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": false, "tail": t, "verb": verb }));
+            };
+            let client = match http_client() { Ok(c) => c, Err(e) => return fail(format!("网络初始化失败:{e}")) };
+            let mut resp = match client.get(&url).send() {
+                Ok(r) if r.status().is_success() => r,
+                Ok(r) => return fail(format!("下载失败 HTTP {}", r.status())),
+                Err(e) => return fail(format!("下载失败:{e}")),
+            };
+            let total = resp.content_length().unwrap_or(0);
+            let ext = if url.ends_with(".msix") { "msix" } else if url.ends_with(".exe") { "exe" } else { "dmg" };
+            let dest = std::env::temp_dir().join(format!("maomao-setup-{idc}.{ext}"));
+            let mut buf: Vec<u8> = Vec::with_capacity(total as usize);
+            let mut chunk = [0u8; 262144];
+            let mut last_pct: i64 = -1;
+            loop {
+                match resp.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&chunk[..n]);
+                        if total > 0 {
+                            let pct = (buf.len() as f64 / total as f64 * 100.0) as i64;
+                            if pct >= last_pct + 5 {
+                                last_pct = pct;
+                                let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "pct": pct, "progress": true, "tail": "", "verb": verb }));
+                            }
+                        }
+                    }
+                    Err(e) => return fail(format!("下载中断:{e}")),
+                }
+            }
+            if buf.len() < 1024 { return fail("下载内容异常(过小)".into()); }
+            if let Err(e) = fs::write(&dest, &buf) { return fail(format!("写入临时文件失败:{e}")); }
+            drop(buf);
+            #[cfg(target_os = "macos")]
+            let install_res: Result<(), String> = (|| {
+                let mnt = std::env::temp_dir().join(format!("maomao-mnt-{idc}"));
+                let _ = fs::remove_dir_all(&mnt);
+                let _ = fs::create_dir_all(&mnt);
+                let out = Command::new("hdiutil").args(["attach", "-nobrowse", "-quiet"]).arg(&dest).arg("-mountpoint").arg(&mnt).output().map_err(|e| format!("挂载失败:{e}"))?;
+                if !out.status.success() { return Err(format!("挂载失败:{}", String::from_utf8_lossy(&out.stderr))); }
+                let appsrc = fs::read_dir(&mnt).ok().and_then(|rd| {
+                    rd.filter_map(|e| e.ok()).map(|e| e.path())
+                        .find(|p| p.extension().map(|x| x == "app").unwrap_or(false))
+                }).ok_or_else(|| "卷内未找到 .app".to_string())?;
+                let dst = PathBuf::from("/Applications").join(appsrc.file_name().unwrap_or_default());
+                let _ = fs::remove_dir_all(&dst);
+                let out = Command::new("cp").args(["-R"]).arg(&appsrc).arg(&dst).output().map_err(|e| format!("拷贝失败:{e}"))?;
+                let _ = Command::new("hdiutil").args(["detach", "-quiet"]).arg(&mnt).output();
+                if !out.status.success() { return Err(format!("拷贝失败:{}", String::from_utf8_lossy(&out.stderr))); }
+                Ok(())
+            })();
+            #[cfg(target_os = "windows")]
+            let install_res: Result<(), String> = {
+                use std::os::windows::process::CommandExt;
+                if ext == "msix" {
+                    let mut c = Command::new("powershell");
+                    c.args(["-NoProfile", "-Command", &format!("Add-AppxPackage -Path '{}'", dest.to_string_lossy())]);
+                    match run_quiet(&mut c) {
+                        Ok(o) if o.status.success() => Ok(()),
+                        Ok(o) => Err(format!("安装失败:{}", String::from_utf8_lossy(&o.stderr))),
+                        Err(e) => Err(format!("安装失败:{e}")),
+                    }
+                } else {
+                    let mut c = Command::new("cmd");
+                    c.raw_arg(format!("/C start /wait "" "{}" /S", dest.to_string_lossy()));
+                    match run_quiet(&mut c) {
+                        Ok(o) if o.status.success() => Ok(()),
+                        Ok(o) => Err(format!("安装失败:{}", String::from_utf8_lossy(&o.stderr))),
+                        Err(e) => Err(format!("安装失败:{e}")),
+                    }
+                }
+            };
+            let _ = fs::remove_file(&dest);
+            match install_res {
+                Ok(()) => { let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "tail": "", "verb": verb })); }
+                Err(e) => fail(format!("{verb}失败:{e}")),
+            }
         });
+        return Ok(format!("正在后台下载并自动{verb},完成后自动刷新"));
     }
     // Windows:Grok 官方暂无原生安装(建议 WSL),只能开文档
     if win && id == "grok" {
