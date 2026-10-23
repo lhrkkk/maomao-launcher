@@ -57,17 +57,19 @@ const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
 
 
 // 邀请卡:默认折叠,展示邀请码 + 已邀人数 + 待结提成(可转入余额)
-function InviteCard({ say, onClaimed }: { say: (t: string) => void; onClaimed: () => Promise<void> }) {
+function InviteCard({ say, onClaimed, ak }: { say: (t: string) => void; onClaimed: () => Promise<void>; ak?: string }) {
   const [info, setInfo] = useState<InviteInfo | null>(null);
-  useEffect(() => { load(); }, []);
   const [busy, setBusy] = useState(false);
   const lastLoad = useRef(0);
   const load = async () => {
+    if (!ak) return;
     if (Date.now() - lastLoad.current < 60_000) return;
     lastLoad.current = Date.now();
     try { setInfo(await invoke<InviteInfo>("invite_info")); }
     catch { setInfo(null); }
   };
+  // 挂载与换账号时都拉(节流归零,新账号立即出新数据)
+  useEffect(() => { lastLoad.current = 0; load(); }, [ak]);
   const claim = async () => {
     setBusy(true);
     try {
@@ -106,16 +108,17 @@ function InviteCard({ say, onClaimed }: { say: (t: string) => void; onClaimed: (
 // 调用量图表(近 8 天):挂载即预取,展开秒出(60s 节流)
 interface DailyPoint { day: string; calls: number; usd: number }
 interface UsageData { daily: DailyPoint[]; today_calls: number; today_usd: number }
-function UsageChart({ cny }: { cny: number }) {
+function UsageChart({ cny, ak }: { cny: number; ak?: string }) {
   const [data, setData] = useState<UsageData | null>(null);
   const lastLoad = useRef(0);
   const load = async () => {
+    if (!ak) return;
     if (Date.now() - lastLoad.current < 60_000) return;
     lastLoad.current = Date.now();
     try { setData(await invoke<UsageData>("usage_daily")); }
     catch { setData(null); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { lastLoad.current = 0; load(); }, [ak]);
   const chart = (pick: (d: DailyPoint) => number, fmt: (n: number) => string) => {
     if (!data) return null;
     const vals = data.daily.map(pick);
@@ -148,16 +151,17 @@ function UsageChart({ cny }: { cny: number }) {
 }
 
 // 最近调用:默认折叠,展开时拉取(60s 节流)
-function RecentCalls({ cny }: { cny: number }) {
+function RecentCalls({ cny, ak }: { cny: number; ak?: string }) {
   const [rows, setRows] = useState<RecentCall[] | null>(null);
-  useEffect(() => { load(); }, []);
   const lastLoad = useRef(0);
   const load = async () => {
+    if (!ak) return;
     if (Date.now() - lastLoad.current < 60_000) return;
     lastLoad.current = Date.now();
     try { setRows(await invoke<RecentCall[]>("recent_calls")); }
     catch { setRows([]); }
   };
+  useEffect(() => { lastLoad.current = 0; load(); }, [ak]);
   return (
     <details className="rcfold" open onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
       <summary>最近调用 <span className="rc-caret">▾</span></summary>
@@ -625,9 +629,9 @@ export default function App() {
       </div>
 
       <div className="listwrap" hidden={view !== "invite"}>
-        <UsageChart cny={cny} />
-        <InviteCard say={say} onClaimed={refresh} />
-        <RecentCalls cny={cny} />
+        <InviteCard say={say} onClaimed={refresh} ak={account?.key} />
+        <UsageChart cny={cny} ak={account?.key} />
+        <RecentCalls cny={cny} ak={account?.key} />
       </div>
 
       <div className="footer">
