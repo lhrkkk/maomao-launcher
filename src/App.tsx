@@ -530,11 +530,11 @@ export default function App() {
   const UNINSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi", "claude-desktop", "codex-desktop"]);
   const [menuPos, setMenuPos] = useState<{ id: string; top: number; left: number } | null>(null);
   const [installing, setInstalling] = useState<Set<string>>(new Set());
-  // Claude Code 模型映射说明卡
-  const [mapInfo, setMapInfo] = useState<{ main: string; small: string } | null>(null);
+  // Claude Code 可用模型说明卡
+  const [mapInfo, setMapInfo] = useState<string[] | null>(null);
   const showMap = async () => {
     setMenuPos(null);
-    try { setMapInfo(await invoke<{ main: string; small: string }>("claude_model_map")); }
+    try { const r = await invoke<{ models: string[] }>("claude_model_map"); setMapInfo(r.models ?? []); }
     catch (e) { say(`${e}`); }
   };
   // 工具版本信息(启动后懒检查):{cur, latest};可升级的行内直接亮"升级"按钮
@@ -758,15 +758,15 @@ export default function App() {
 
       <div className={`toast ${toast ? "show" : ""}`} role="status">{toast}</div>
 
-      {/* Claude Code 模型映射说明卡 */}
+      {/* Claude Code 可用模型说明卡 */}
       {mapInfo && (
         <div className="authmask" onClick={() => setMapInfo(null)}>
           <div className="authcard" onClick={(e) => e.stopPropagation()}>
-            <div className="authcard-title">Claude Code 模型映射</div>
+            <div className="authcard-title">Claude Code 可用模型</div>
             <div className="authcard-body">
-              主模型(ANTHROPIC_MODEL):<code>{mapInfo.main}</code><br />
-              快速模型(ANTHROPIC_SMALL_FAST_MODEL):<code>{mapInfo.small}</code><br /><br />
-              接管时写入 <code>~/.claude/settings.json</code>;模型由管理后台「模型配置」下发,改动后 app 自动采用,无需发版。
+              {mapInfo.length === 0 ? "暂未配置" : mapInfo.map((m) => (
+                <div key={m} className="maprow">· <code>{m}</code></div>
+              ))}
             </div>
             <div className="authcard-acts">
               <button className="btn btn-save" onClick={() => setMapInfo(null)}>知道了</button>

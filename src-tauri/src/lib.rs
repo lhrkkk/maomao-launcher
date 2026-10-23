@@ -393,6 +393,7 @@ struct AppCfg {
     grok: Vec<String>, grok_default: String,
     full: Vec<String>, full_default: String,
     claude_main: String, claude_small: String,
+    claude: Vec<String>,
 }
 
 fn default_app_config() -> AppCfg {
@@ -404,6 +405,7 @@ fn default_app_config() -> AppCfg {
         full: ["gpt-6.1-sol", "claude-opus-5-5", "grok-latest", "glm-5.3", "MiniMax-M3"].iter().map(|s| s.to_string()).collect(),
         full_default: "gpt-6.1-sol".into(),
         claude_main: "claude-opus-5-5".into(),
+        claude: ["claude-opus-5-5", "gpt-6.1-sol", "grok-latest", "glm-5.3"].iter().map(|s| s.to_string()).collect(),
         claude_small: "glm-5.3".into(),
     }
 }
@@ -434,6 +436,7 @@ fn fetch_app_config() -> AppCfg {
     c.full = cfg_strings(&v, "full", &c.full);
     c.full_default = cfg_string(&v, "full_default", &c.full_default);
     c.claude_main = cfg_string(&v, "claude_main", &c.claude_main);
+    c.claude = cfg_strings(&v, "claude", &c.claude);
     c.claude_small = cfg_string(&v, "claude_small", &c.claude_small);
     c
 }
@@ -1316,7 +1319,7 @@ async fn uninstall_tool(app: tauri::AppHandle, id: String) -> Result<String, Str
 #[tauri::command]
 async fn claude_model_map() -> Result<serde_json::Value, String> {
     let c = fetch_app_config();
-    Ok(serde_json::json!({ "main": c.claude_main, "small": c.claude_small }))
+    Ok(serde_json::json!({ "models": c.claude }))
 }
 
 /// 查工具版本:(本机版本, 最新版)。最新版走 npm registry;curl 脚本系拿不到则 latest=None
