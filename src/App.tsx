@@ -79,7 +79,15 @@ function InviteCard({ say, onClaimed }: { say: (t: string) => void; onClaimed: (
   };
   return (
     <details className="rcfold" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
-      <summary>邀请好友 <span className="rc-caret">▾</span></summary>
+      <summary>邀请好友
+        {info?.aff_code && (
+          <button className="rc-copy" title="复制邀请链接" onClick={(e) => {
+            e.preventDefault(); e.stopPropagation();
+            const link = `https://binaryworld.world/register?aff=${info.aff_code}`;
+            navigator.clipboard?.writeText(link).then(() => say("邀请链接已复制 🐾"), () => say(link));
+          }}>⧉</button>
+        )}
+        <span className="rc-caret">▾</span></summary>
       {info === null ? <div className="keyhint">加载中…</div> : !info.aff_code ? <div className="keyhint">暂无邀请信息</div> : (
         <div className="invbox">
           <div className="invcode" onClick={() => {
@@ -222,6 +230,7 @@ export default function App() {
       .catch(() => {});
   }, []);
   const [tk, setTk] = useState(true);
+  const [view, setView] = useState<"home" | "invite">("home");
   const [updPct, setUpdPct] = useState(-1);
   const [busy, setBusy] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -376,8 +385,8 @@ export default function App() {
       <div className="header">
         <span className="brand-icon">{CAT_LOGO}</span>
         <div>
-          <div className="brand-name">猫猫 <em>Token</em></div>
-          <div className="brand-sub">一个 Key，喵定所有 AI · 一键启动</div>
+          <div className="brand-name">猫猫 <em>动力</em></div>
+          <div className="brand-sub">一个 Key,喵定所有 AI · 一键启动</div>
           {upd && (
             <div className="updrow">
               <span className="upd-text">🎉 新版本 v{upd.version}</span>
@@ -415,8 +424,7 @@ export default function App() {
               </div>
             </div>
             <KeysPanel account={account} onUsed={refresh} say={say} />
-            <RecentCalls cny={cny} />
-            <InviteCard say={say} onClaimed={refresh} />
+
           </>
         ) : (
           <button
@@ -437,6 +445,12 @@ export default function App() {
         </div>
       </div>
 
+      <div className="viewtabs">
+        <button className={`tab ${view === "home" ? "on" : ""}`} onClick={() => setView("home")}>启动</button>
+        <button className={`tab ${view === "invite" ? "on" : ""}`} onClick={() => setView("invite")}>邀请</button>
+      </div>
+
+      {view === "home" ? (
       <div className="listwrap">
         <div className="group-title">桌面应用</div>
         <div className="tools">{desktop.map(row)}</div>
@@ -444,9 +458,16 @@ export default function App() {
         <div className="tools">{cli.map(row)}</div>
       </div>
 
+      ) : (
+        <div className="listwrap">
+          <RecentCalls cny={cny} />
+          <InviteCard say={say} onClaimed={refresh} />
+        </div>
+      )}
+
       <div className="footer">
         <span>binaryworld.world · <a onClick={() => checkUpdate(false)}>检查更新</a></span>
-        <span>猫猫 Token · Made with meow ♡</span>
+        <span>猫猫动力 · Made with meow ♡</span>
       </div>
 
       {pendingAuth && (
