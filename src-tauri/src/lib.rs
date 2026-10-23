@@ -1148,37 +1148,43 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
             open_external(node_url);
             return Ok("未检测到 Node,已打开 Node 安装器(装完后回来再点安装)".into());
         }
-        let idc = id.clone();
-        std::thread::spawn(move || {
-            use tauri::Emitter;
-            let res = if cfg!(target_os = "windows") {
-                #[cfg(target_os = "windows")]
-                { run_quiet(Command::new("cmd").args(["/C", &script])) }
-                #[cfg(not(target_os = "windows"))]
-                { Err(std::io::Error::other("windows only")) }
-            } else {
-                Command::new("/bin/zsh").args(["-i", "-l", "-c", &script]).output()
-            };
-            let (ok, tail) = match res {
-                Ok(o) => {
-                    let mut t = String::from_utf8_lossy(&o.stdout).to_string();
-                    t.push_str(&String::from_utf8_lossy(&o.stderr));
-                    (o.status.success(), t)
-                }
-                Err(e) => (false, e.to_string()),
-            };
-            let chars: Vec<char> = tail.chars().collect();
-            let tail: String = chars[chars.len().saturating_sub(400)..].iter().collect();
-            let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": ok, "tail": tail }));
-        });
+        run_silent_bg(app.clone(), &id, script, verb);
         return Ok(format!("正在后台{verb}…完成后自动刷新"));
     }
     Err("该工具暂不支持一键安装".into())
 }
 
-/// 卸载工具:npm 系走 npm uninstall;opencode(macOS)删官方目录;其余打开官方文档
+/// 后台静默执行脚本,完成/失败 emit mm-install{ id, ok, tail, verb }
+fn run_silent_bg(app: tauri::AppHandle, id: &str, script: String, verb: &str) {
+    let idc = id.to_string();
+    let verbc = verb.to_string();
+    std::thread::spawn(move || {
+        use tauri::Emitter;
+        let res = if cfg!(target_os = "windows") {
+            #[cfg(target_os = "windows")]
+            { run_quiet(Command::new("cmd").args(["/C", &script])) }
+            #[cfg(not(target_os = "windows"))]
+            { Err(std::io::Error::other("windows only")) }
+        } else {
+            Command::new("/bin/zsh").args(["-i", "-l", "-c", &script]).output()
+        };
+        let (ok, tail) = match res {
+            Ok(o) => {
+                let mut t = String::from_utf8_lossy(&o.stdout).to_string();
+                t.push_str(&String::from_utf8_lossy(&o.stderr));
+                (o.status.success(), t)
+            }
+            Err(e) => (false, e.to_string()),
+        };
+        let chars: Vec<char> = tail.chars().collect();
+        let tail: String = chars[chars.len().saturating_sub(400)..].iter().collect();
+        let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": ok, "tail": tail, "verb": verbc }));
+    });
+}
+
+/// 卸载工具:静默后台执行(npm uninstall / 删目录);grok/hermes 打开官方文档
 #[tauri::command]
-async fn uninstall_tool(id: String) -> Result<String, String> {
+async fn uninstall_tool(app: tauri::AppHandle, id: String) -> Result<String, String> {
     let win = cfg!(target_os = "windows");
     let npm_pkg: Option<&str> = match (id.as_str(), win) {
         ("claude", _) => Some("@anthropic-ai/claude-code"),
@@ -1190,13 +1196,38 @@ async fn uninstall_tool(id: String) -> Result<String, String> {
         _ => None,
     };
     if let Some(pkg) = npm_pkg {
-        run_in_terminal(&format!("npm uninstall -g {pkg}"))?;
-        return Ok(format!("已在终端执行卸载 {pkg},完成后回来刷新状态"));
+        run_silent_bg(app.clone(), &id, format!("npm uninstall -g {pkg}"), "卸载");
+        return Ok("正在后台卸载…完成后自动刷新".into());
     }
     match id.as_str() {
         "opencode" if !win => {
-            run_in_terminal("rm -rf ~/.opencode/bin && echo 'opencode 已删除(配置保留;若由 mise/brew 安装请用对应方式卸载)'")?;
-            Ok("已删除 opencode 程序,配置保留".into())
+            let bin = std::env::var("HOME")
+                .map(|h| PathBuf::from(h).join(".opencode/bin"))
+                .ok()
+                .filter(|p| p.exists());
+            if let Some(p) = bin {
+                fs::remove_dir_all(&p).map_err(|e| format!("删除失败:{e}"))?;
+                return Ok("已删除 opencode 程序(配置保留;若由 mise/brew 安装请用对应方式卸载)".into());
+            }
+            Ok("未找到 ~/.opencode/bin(可能由 mise/brew 安装,请用对应方式卸载)".into())
+        }
+        "claude-desktop" | "codex-desktop" => {
+            #[cfg(target_os = "macos")]
+            {
+                let names: &[&str] = if id == "claude-desktop" { &["Claude"] } else { &["Codex", "ChatGPT"] };
+                match find_app(names) {
+                    Some(app) => {
+                        let _ = Command::new("open").args(["-R", &app]).output();
+                        Ok("已在 Finder 定位,拖入废纸篓即可卸载".into())
+                    }
+                    None => Ok("未找到应用".into()),
+                }
+            }
+            #[cfg(target_os = "windows")]
+            {
+                open_external("ms-settings:appsfeatures");
+                Ok("已打开系统应用管理,在那里卸载".into())
+            }
         }
         "grok" => {
             open_external("https://x.ai/build");
@@ -1208,6 +1239,60 @@ async fn uninstall_tool(id: String) -> Result<String, String> {
         }
         _ => Err("该工具暂不支持一键卸载".into()),
     }
+}
+
+/// 查工具版本:(本机版本, 最新版)。最新版走 npm registry;curl 脚本系拿不到则 latest=None
+#[tauri::command]
+async fn tool_versions(id: String) -> Result<Option<(Option<String>, Option<String>)>, String> {
+    let win = cfg!(target_os = "windows");
+    let cmd = match id.as_str() {
+        "claude" => "claude",
+        "codex" => "codex",
+        "gemini" => "gemini",
+        "opencode" => "opencode",
+        "openclaw" => "openclaw",
+        "pi" => "pi",
+        "grok" | "hermes" => return Ok(Some((None, None))), // 无稳定版本渠道,菜单保持显示升级
+        _ => return Ok(None), // 桌面版等不支持
+    };
+    let run = |script: String| -> Option<String> {
+        #[cfg(target_os = "windows")]
+        let out = run_quiet(Command::new("cmd").args(["/C", &script])).ok();
+        #[cfg(not(target_os = "windows"))]
+        let out = Command::new("/bin/zsh").args(["-i", "-l", "-c", &script]).output().ok();
+        let o = out?;
+        let txt = String::from_utf8_lossy(&o.stdout).to_string();
+        // 取输出里第一个 x.y.z 形式的版本号
+        let mut it = txt.split(|c: char| !c.is_ascii_digit() && c != '.');
+        it.find(|s| {
+            let parts: Vec<&str> = s.split('.').collect();
+            parts.len() >= 2 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+        })
+        .map(|s| s.to_string())
+    };
+    let current = run(format!("{cmd} --version 2>/dev/null | head -2"));
+    let latest = if win {
+        run(format!("npm view opencode-ai version 2>nul", ).replace("opencode-ai",
+            match id.as_str() {
+                "claude" => "@anthropic-ai/claude-code",
+                "codex" => "@openai/codex",
+                "gemini" => "@google/gemini-cli",
+                "opencode" => "opencode-ai",
+                "openclaw" => "openclaw",
+                _ => "pi",
+            }))
+    } else {
+        let pkg = match id.as_str() {
+            "claude" => "@anthropic-ai/claude-code",
+            "codex" => "@openai/codex",
+            "gemini" => "@google/gemini-cli",
+            "opencode" => "opencode-ai",
+            "openclaw" => "openclaw",
+            _ => "@mariozechner/pi-coding-agent",
+        };
+        run(format!("npm view {pkg} version --registry=https://registry.npmmirror.com 2>/dev/null"))
+    };
+    Ok(Some((current, latest)))
 }
 
 #[tauri::command]
@@ -1309,7 +1394,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim, install_tool, uninstall_tool])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim, install_tool, uninstall_tool, tool_versions])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 

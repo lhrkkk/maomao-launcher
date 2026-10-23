@@ -270,11 +270,12 @@ export default function App() {
           if (e.payload?.key) setPendingAuth(e.payload);
         }));
         unsubs.push(await listen<string>("mm-auth-error", (e) => say(e.payload)));
-        // 后台静默安装结果(Rust 线程跑完 emit)
-        unsubs.push(await listen<{ id: string; ok: boolean; tail: string }>("mm-install", (e) => {
+        // 后台静默安装/卸载结果(Rust 线程跑完 emit)
+        unsubs.push(await listen<{ id: string; ok: boolean; tail: string; verb?: string }>("mm-install", (e) => {
+          const verb = e.payload.verb || "安装/升级";
           setInstalling((s) => { const n = new Set(s); n.delete(e.payload.id); return n; });
-          if (e.payload.ok) { say("安装/升级完成 🐾"); refresh(); }
-          else say(`后台安装失败:${e.payload.tail.slice(-160) || "未知错误"}`);
+          if (e.payload.ok) { say(`${verb}完成 🐾`); refresh(); }
+          else say(`后台${verb}失败:${e.payload.tail.slice(-160) || "未知错误"}`);
         }));
       } catch {}
     })();
@@ -378,19 +379,32 @@ export default function App() {
   const desktop = tools.filter((t) => t.kind === "Desktop");
 
   const INSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi", "claude-desktop", "codex-desktop"]);
-  // 可一键卸载的 CLI(桌面版走系统卸载,不在此列);入口藏在 ⋯ 菜单里
-  const UNINSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi"]);
+  // ⋯ 菜单对全部已安装工具可用(桌面版卸载=定位/Finder/系统设置)
+  const UNINSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi", "claude-desktop", "codex-desktop"]);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
-  const [confirmUn, setConfirmUn] = useState<string | null>(null);
   const [installing, setInstalling] = useState<Set<string>>(new Set());
-  const confirmUnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const askUninstall = (t: Tool) => {
-    if (confirmUnTimer.current) clearTimeout(confirmUnTimer.current);
-    setConfirmUn(t.id);
-    confirmUnTimer.current = setTimeout(() => setConfirmUn(null), 4000);
+  // 工具版本信息(启动后懒检查):{cur, latest};可升级的行内直接亮"升级"按钮
+  const [verInfo, setVerInfo] = useState<Record<string, { cur?: string; latest?: string }>>({});
+  const verChecked = useRef(false);
+  useEffect(() => {
+    if (verChecked.current) return;
+    const installed = tools.filter((t) => t.installed && t.kind === "Cli" && t.id !== "grok" && t.id !== "hermes");
+    if (!installed.length) return;
+    verChecked.current = true;
+    installed.forEach((t) => {
+      invoke<[string | null, string | null] | null>("tool_versions", { id: t.id })
+        .then((v) => {
+          if (v) setVerInfo((s) => ({ ...s, [t.id]: { cur: v[0] ?? undefined, latest: v[1] ?? undefined } }));
+        })
+        .catch(() => {});
+    });
+  }, [tools]);
+  const upgradable = (t: Tool) => {
+    const v = verInfo[t.id];
+    return !!(v?.cur && v?.latest && v.cur !== v.latest);
   };
   const doUninstall = async (t: Tool) => {
-    setMenuOpen(null); setConfirmUn(null);
+    setMenuOpen(null);
     try { say(await invoke<string>("uninstall_tool", { id: t.id })); await refresh(); }
     catch (e) { say(`${e}`); }
     pollTool(t, false, "已卸载");
@@ -420,7 +434,7 @@ export default function App() {
       } catch {}
     }, 8000);
   };
-  const row = (t: Tool) => (
+  const row = (t: Tool, isLast = false) => (
     <div
       key={t.id}
       className="tool-row"
@@ -436,18 +450,24 @@ export default function App() {
       </span>
       {t.installed ? (
         <span className="tool-acts">
+          {upgradable(t) && (
+            installing.has(t.id)
+              ? <span className="tool-state st-install busy">升级中…</span>
+              : <span className="tool-state st-install" onClick={() => upgrade(t)}>升级</span>
+          )}
           <span className={`tool-state st-ok`} onClick={() => launch(t)}>启动 ↗</span>
           {UNINSTALLABLE.has(t.id) && (
             <span className="tool-menu">
-              <span className="tool-dots" onClick={(e) => { e.stopPropagation(); setConfirmUn(null); setMenuOpen(menuOpen === t.id ? null : t.id); }}>⋯</span>
+              <span className="tool-dots" onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === t.id ? null : t.id); }}>⋯</span>
               {menuOpen === t.id && (
                 <>
                   <span className="menu-backdrop" onClick={(e) => { e.stopPropagation(); setMenuOpen(null); }} />
-                  <span className="tool-menu-pop">
-                    <span className="tool-menu-item" onClick={(e) => { e.stopPropagation(); upgrade(t); }}>升级</span>
-                    {confirmUn === t.id
-                      ? <span className="tool-menu-item danger" onClick={(e) => { e.stopPropagation(); doUninstall(t); }}>确认卸载</span>
-                      : <span className="tool-menu-item danger" onClick={(e) => { e.stopPropagation(); askUninstall(t); }}>卸载</span>}
+                  {/* 滚动容器会裁掉越界弹层:组内最后一行向上弹 */}
+                  <span className={`tool-menu-pop${isLast ? " up" : ""}`}>
+                    {(t.id === "grok" || t.id === "hermes") && (
+                      <span className="tool-menu-item" onClick={(e) => { e.stopPropagation(); upgrade(t); }}>升级</span>
+                    )}
+                    <span className="tool-menu-item danger" onClick={(e) => { e.stopPropagation(); doUninstall(t); }}>卸载</span>
                   </span>
                 </>
               )}
@@ -552,9 +572,9 @@ export default function App() {
       {view === "home" ? (
       <div className="listwrap">
         <div className="group-title">桌面应用</div>
-        <div className="tools">{desktop.map(row)}</div>
+        <div className="tools">{desktop.map((t, i) => row(t, i === desktop.length - 1))}</div>
         <div className="group-title">命令行工具</div>
-        <div className="tools">{cli.map(row)}</div>
+        <div className="tools">{cli.map((t, i) => row(t, i === cli.length - 1))}</div>
       </div>
 
       ) : (
