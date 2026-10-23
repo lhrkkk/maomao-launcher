@@ -546,7 +546,7 @@ export default function App() {
   const verChecked = useRef(false);
   useEffect(() => {
     if (verChecked.current) return;
-    const installed = tools.filter((t) => t.installed && t.kind === "Cli" && t.id !== "grok" && t.id !== "hermes");
+    const installed = tools.filter((t) => t.installed && t.id !== "grok" && t.id !== "hermes");
     if (!installed.length) return;
     verChecked.current = true;
     installed.forEach((t) => {
@@ -557,9 +557,19 @@ export default function App() {
         .catch(() => {});
     });
   }, [tools]);
+  const newer = (a: string, b: string): boolean => {
+    const pa = a.split(/[.+-]/).map((x) => parseInt(x, 10) || 0);
+    const pb = b.split(/[.+-]/).map((x) => parseInt(x, 10) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const d = (pa[i] || 0) - (pb[i] || 0);
+      if (d) return d > 0;
+    }
+    return false;
+  };
   const upgradable = (t: Tool) => {
+    if (t.id === "grok" || t.id === "hermes") return true; // 无版本渠道,行内常显(重跑官方脚本幂等)
     const v = verInfo[t.id];
-    return !!(v?.cur && v?.latest && v.cur !== v.latest);
+    return !!(v?.cur && v?.latest && newer(v.latest, v.cur));
   };
   const doUninstall = async (t: Tool) => {
     setMenuPos(null);

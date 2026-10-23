@@ -1418,10 +1418,52 @@ async fn claude_model_map() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "models": c.claude }))
 }
 
-/// 查工具版本:(本机版本, 最新版)。最新版走 npm registry;curl 脚本系拿不到则 latest=None
+/// 查工具版本:(本机版本, 最新版)。CLI 走 npm registry;桌面版走 desktop-versions.json 清单
 #[tauri::command]
 async fn tool_versions(id: String) -> Result<Option<(Option<String>, Option<String>)>, String> {
     let win = cfg!(target_os = "windows");
+    // 桌面版:本机已装版本 vs 服务器清单(换包时登记)
+    if id.ends_with("-desktop") {
+        let local: Option<String> = {
+            #[cfg(target_os = "macos")]
+            {
+                let names: &[&str] = if id == "claude-desktop" { &["Claude"] } else { &["Codex", "ChatGPT"] };
+                names.iter().find_map(|n| {
+                    let pl = PathBuf::from(format!("/Applications/{n}.app/Contents/Info.plist"));
+                    let out = Command::new("plutil")
+                        .args(["-extract", "CFBundleShortVersionString", "raw", &pl.to_string_lossy()])
+                        .output().ok()?;
+                    if out.status.success() {
+                        let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                        if !v.is_empty() { Some(v) } else { None }
+                    } else { None }
+                })
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let pat = if id == "claude-desktop" { "Claude" } else { "ChatGPT|Codex" };
+                let ps = format!(
+                    r#"$p = Get-AppxPackage | Where-Object {{ $_.Name -match '{pat}' }} | Select-Object -First 1; if ($p) {{ $p.Version }} else {{ (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object {{ $_.DisplayName -match '{pat}' }} | Select-Object -First 1).DisplayVersion }}"#
+                );
+                run_quiet(Command::new("powershell").args(["-NoProfile", "-Command", &ps]))
+                    .ok()
+                    .filter(|o| o.status.success())
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                    .filter(|v| !v.is_empty())
+            }
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            { None }
+        };
+        let latest = match mm_get("/desktop-versions.json") {
+            Ok(resp) if resp.status().is_success() => {
+                let v: serde_json::Value = resp.json().unwrap_or_default();
+                let key = if win { "win" } else { "mac" };
+                v.pointer(&format!("/{id}/{key}")).and_then(|x| x.as_str()).map(|s| s.to_string())
+            }
+            _ => None,
+        };
+        return Ok(Some((local, latest)));
+    }
     let cmd = match id.as_str() {
         "claude" => "claude",
         "codex" => "codex",
