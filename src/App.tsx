@@ -470,14 +470,23 @@ export default function App() {
     } catch { if (!silent) say("检查更新失败,请稍后再试"); }
   };
   useEffect(() => { checkUpdate(); }, []);
+  const dlTotal = useRef(0);
+  const dlGot = useRef(0);
   const applyUpdate = async () => {
     if (!upd) return;
     setUpdPct(0);
+    dlTotal.current = 0;
+    dlGot.current = 0;
     try {
       await upd.downloadAndInstall((ev) => {
-        if (ev.event === "Started" && ev.data.contentLength) setUpdPct(1);
-        else if (ev.event === "Progress") setUpdPct((p) => Math.max(p, 1));
-        else if (ev.event === "Finished") setUpdPct(100);
+        if (ev.event === "Started" && ev.data.contentLength) {
+          dlTotal.current = ev.data.contentLength;
+          setUpdPct(1);
+        } else if (ev.event === "Progress") {
+          dlGot.current += ev.data.chunkLength ?? 0;
+          const t = dlTotal.current;
+          setUpdPct(t ? Math.max(1, Math.min(99, Math.round((dlGot.current / t) * 99))) : 1);
+        } else if (ev.event === "Finished") setUpdPct(100);
       });
       await relaunch();
     } catch (e) { setUpdPct(-1); say(`更新失败:${e}`); }
@@ -627,7 +636,12 @@ export default function App() {
               <span className="upd-text">🎉 新版本 v{upd.version}</span>
               {updPct < 0
                 ? <button className="btn krow-use" onClick={applyUpdate}>立即更新</button>
-                : <span className="upd-pct">{updPct >= 100 ? "安装中…" : `下载中 ${updPct}%`}</span>}
+                : (
+                  <span className="upd-act">
+                    <span className="upd-pct">{updPct >= 100 ? "安装中…" : `下载中 ${updPct}%`}</span>
+                    {updPct < 100 && <a className="upd-retry" onClick={applyUpdate}>重试</a>}
+                  </span>
+                )}
             </div>
           )}
         </div>

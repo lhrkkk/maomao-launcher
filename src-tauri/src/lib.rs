@@ -137,6 +137,7 @@ fn which_in_login_shell(cmd: &str) -> bool {
         dirs.push(up.join(".local").join("bin"));
         dirs.push(up.join(".codex").join("bin"));
         dirs.push(up.join(".claude").join("local"));
+        dirs.push(up.join("scoop").join("shims"));
     }
     if let Ok(appdata) = env::var("APPDATA") { dirs.push(PathBuf::from(appdata).join("npm")); }
     if let Ok(local) = env::var("LOCALAPPDATA") {
@@ -144,13 +145,15 @@ fn which_in_login_shell(cmd: &str) -> bool {
         dirs.push(l.join("Microsoft").join("WindowsApps"));
         dirs.push(l.join("Programs"));
     }
-    if let Ok(out) = run_quiet(Command::new("powershell")
-        .args(["-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('PATH','User')"]))
-    {
-        if out.status.success() {
-            for seg in String::from_utf8_lossy(&out.stdout).split(';') {
-                let seg = seg.trim();
-                if !seg.is_empty() { dirs.push(PathBuf::from(seg)); }
+    for scope in ["User", "Machine"] {
+        if let Ok(out) = run_quiet(Command::new("powershell")
+            .args(["-NoProfile", "-Command", &format!("[Environment]::GetEnvironmentVariable('PATH','{scope}')")]))
+        {
+            if out.status.success() {
+                for seg in String::from_utf8_lossy(&out.stdout).split(';') {
+                    let seg = seg.trim().trim_matches('"');
+                    if !seg.is_empty() { dirs.push(PathBuf::from(seg)); }
+                }
             }
         }
     }
@@ -217,6 +220,18 @@ fn find_app(candidates: &[&str]) -> Option<String> {
     }
     if let Some(p) = probes.into_iter().find(|p| p.exists()) {
         return Some(p.to_string_lossy().to_string());
+    }
+    // MSIX/Store 应用(ChatGPT=Codex 桌面版等):无别名、无 .lnk、目录被 ACL 锁,Get-StartApps 是唯一可靠探测
+    if let Ok(out) = run_quiet(Command::new("powershell").args(["-NoProfile", "-Command", &format!(
+        "Get-StartApps | Where-Object {{ $_.Name -match '^(ChatGPT|Codex|Claude|{})\\b|{}' }} | Select-Object -First 1 -ExpandProperty AppID",
+        candidates.join("|"), candidates.join("|")
+    )])) {
+        if out.status.success() {
+            let appid = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !appid.is_empty() {
+                return Some(format!("shell:AppsFolder\\{appid}"));
+            }
+        }
     }
     start_menu_shortcut(candidates)
 }
@@ -1364,8 +1379,16 @@ async fn launch(id: String) -> Result<(), String> {
             #[cfg(target_os = "windows")]
             let out = {
                 use std::os::windows::process::CommandExt;
-                let mut c = Command::new("cmd");
-                c.raw_arg(format!("/C start \"\" \"{app}\""));
+                let mut c = if app.starts_with("shell:AppsFolder") {
+                    // MSIX/Store 应用:explorer 按 AppID 启动
+                    let mut c = Command::new("explorer");
+                    c.arg(&app);
+                    c
+                } else {
+                    let mut c = Command::new("cmd");
+                    c.raw_arg(format!("/C start \"\" \"{app}\""));
+                    c
+                };
                 run_quiet(&mut c)
             }.map_err(|e| format!("启动失败:{e}"))?;
             if !out.status.success() {
