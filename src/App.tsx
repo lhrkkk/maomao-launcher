@@ -676,7 +676,7 @@ export default function App() {
                   : <span className="val">—</span>}
               </div>
               <div className="statcard tkcard">
-                <span className="lbl"><span className={`tk-dot ${tk ? "" : "off"}`} />{tk ? "接管中" : "已还原"}</span>
+                <span className="lbl"><span className={`tk-dot ${tk ? "" : "off"}`} />{tk ? "开启中" : "已还原"}</span>
                 <label className="sw">
                   <input type="checkbox" checked={tk} onChange={toggleTk} /><i />
                 </label>
@@ -738,7 +738,7 @@ export default function App() {
       </div>
 
       <div className="footer">
-        <span>binaryworld.world · v{appVer} · <a onClick={() => checkUpdate(false)}>检查更新</a></span>
+        <span>mmpower.space · v{appVer} · <a onClick={() => checkUpdate(false)}>检查更新</a></span>
         <span>猫猫动力 · Made with meow ♡</span>
       </div>
 
