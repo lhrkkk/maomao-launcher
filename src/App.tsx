@@ -572,20 +572,18 @@ export default function App() {
         <button className={`tab ${view === "invite" ? "on" : ""}`} onClick={() => setView("invite")}>更多</button>
       </div>
 
-      {view === "home" ? (
-      <div className="listwrap">
+      {/* 两视图常驻(非活动只隐藏):「更多」页的邀请/最近调用从启动就后台预取,切换零等待 */}
+      <div className="listwrap" hidden={view !== "home"}>
         <div className="group-title">桌面应用</div>
         <div className="tools">{desktop.map(row)}</div>
         <div className="group-title">命令行工具</div>
         <div className="tools">{cli.map(row)}</div>
       </div>
 
-      ) : (
-        <div className="listwrap">
-          <InviteCard say={say} onClaimed={refresh} />
-          <RecentCalls cny={cny} />
-        </div>
-      )}
+      <div className="listwrap" hidden={view !== "invite"}>
+        <InviteCard say={say} onClaimed={refresh} />
+        <RecentCalls cny={cny} />
+      </div>
 
       <div className="footer">
         <span>binaryworld.world · <a onClick={() => checkUpdate(false)}>检查更新</a></span>

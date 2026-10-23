@@ -8,6 +8,7 @@
   --dark: #29263e;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body, #root { height: 100%; }
 body {
   margin: 0;
