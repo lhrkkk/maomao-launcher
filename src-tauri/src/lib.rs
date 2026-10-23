@@ -1079,12 +1079,15 @@ fn run_in_terminal(script: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 安装工具:桌面版走自托管安装包;CLI 按官方推荐方式(curl 脚本/npm;缺 Node 先引导,npmmirror 源)
+/// 安装/升级工具:桌面版走自托管安装包;CLI 按官方推荐方式(curl 脚本/npm;缺 Node 先引导,npmmirror 源)
+/// upgrade=true 时 npm 命令带 @latest;官方 curl 脚本幂等,重跑即升级
 #[tauri::command]
-async fn install_tool(id: String) -> Result<String, String> {
+async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) -> Result<String, String> {
     let arch = std::env::consts::ARCH;
     let win = cfg!(target_os = "windows");
-    // 桌面版:自托管安装包直链
+    let upgrading = upgrade.unwrap_or(false);
+    let verb = if upgrading { "升级" } else { "安装" };
+    // 桌面版:自托管安装包直链(升级=重新下载覆盖安装)
     let desktop_url: Option<String> = match (id.as_str(), win, arch) {
         ("claude-desktop", false, "aarch64") => Some("/Claude-mac-arm64.dmg".into()),
         ("claude-desktop", false, "x86_64") => Some("/Claude-mac-x64.dmg".into()),
@@ -1097,49 +1100,46 @@ async fn install_tool(id: String) -> Result<String, String> {
     };
     if let Some(path) = desktop_url {
         open_external(&format!("{SITE}{path}"));
-        return Ok("已开始下载安装包,请按提示完成安装".into());
+        return Ok(if upgrading {
+            "已打开最新安装包,下载后覆盖安装即可升级".into()
+        } else {
+            "已开始下载安装包,请按提示完成安装".into()
+        });
     }
-    // CLI:官方 curl 脚本系(仅 macOS/Linux;Windows 走各自分支)
-    if !win {
-        let curl_script: Option<&str> = match id.as_str() {
-            // opencode 官方推荐脚本安装(装到 ~/.opencode/bin),比 npm 干净
-            "opencode" => Some("curl -fsSL https://opencode.ai/install | bash"),
-            "grok" => Some("curl -fsSL https://x.ai/cli/install.sh | bash"),
-            "hermes" => Some("curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"),
-            _ => None,
-        };
-        if let Some(script) = curl_script {
-            run_in_terminal(script)?;
-            return Ok("已在终端执行官方安装脚本,完成后回来刷新状态".into());
-        }
-    } else {
-        // Windows:Grok 官方暂无原生安装(建议 WSL),Hermes 用官方 PowerShell 脚本
-        match id.as_str() {
-            "grok" => {
-                open_external("https://x.ai/build");
-                return Ok("Grok 暂无 Windows 原生安装,已打开官方文档(可用 WSL)".into());
-            }
-            "hermes" => {
-                let script = "powershell -NoProfile -Command \"iex (irm https://hermes-agent.nousresearch.com/install.ps1)\"";
-                run_in_terminal(&script)?;
-                return Ok("已在终端执行 Hermes 官方安装脚本,完成后回来刷新状态".into());
-            }
-            _ => {}
-        }
+    // Windows:Grok 官方暂无原生安装(建议 WSL),只能开文档
+    if win && id == "grok" {
+        open_external("https://x.ai/build");
+        return Ok("Grok 暂无 Windows 原生安装,已打开官方文档(可用 WSL)".into());
     }
-    // CLI:npm 系(缺 Node 引导;openclaw 需先备 Bun 运行时)
     let npm_pkg: Option<&str> = match id.as_str() {
         "claude" => Some("@anthropic-ai/claude-code"),
         "codex" => Some("@openai/codex"),
         "gemini" => Some("@google/gemini-cli"),
-        "opencode" => Some("opencode-ai"),
+        "opencode" if win => Some("opencode-ai"),
         "openclaw" => Some("openclaw"),
         "pi" => Some("@mariozechner/pi-coding-agent"),
         _ => None,
     };
-    if let Some(pkg) = npm_pkg {
-        // GUI 进程 PATH 不可靠(node 常由 mise/brew 管理),走登录 shell 检测链
-        if !which_in_login_shell("node") {
+    let registry = "https://registry.npmmirror.com";
+    let latest = if upgrading { "@latest" } else { "" };
+    // 静默后台安装脚本:macOS 用官方 curl 脚本或 npm(交互登录 shell,拿 mise 等环境);Windows 走 cmd
+    let shell_script: Option<String> = if win {
+        match id.as_str() {
+            "hermes" => Some("powershell -NoProfile -Command \"iex (irm https://hermes-agent.nousresearch.com/install.ps1)\"".into()),
+            _ => npm_pkg.map(|pkg| format!("npm install -g {pkg}{latest} --registry={registry}")),
+        }
+    } else {
+        match id.as_str() {
+            "opencode" => Some("curl -fsSL https://opencode.ai/install | bash".into()),
+            "grok" => Some("curl -fsSL https://x.ai/cli/install.sh | bash".into()),
+            "hermes" => Some("curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash".into()),
+            "openclaw" => Some(format!("command -v bun >/dev/null || curl -fsSL https://bun.sh/install | bash; npm install -g openclaw{latest} --registry={registry}")),
+            _ => npm_pkg.map(|pkg| format!("npm install -g {pkg}{latest} --registry={registry}")),
+        }
+    };
+    if let Some(script) = shell_script {
+        // npm 系需要 Node;curl 脚本自带运行时。GUI 进程 PATH 不可靠,走登录 shell 检测链
+        if npm_pkg.is_some() && !which_in_login_shell("node") {
             let node_url = if win {
                 "https://cdn.npmmirror.com/binaries/node/v22.14.0/node-v22.14.0-x64.msi"
             } else {
@@ -1148,16 +1148,30 @@ async fn install_tool(id: String) -> Result<String, String> {
             open_external(node_url);
             return Ok("未检测到 Node,已打开 Node 安装器(装完后回来再点安装)".into());
         }
-        let registry = "https://registry.npmmirror.com";
-        let script = if id == "openclaw" && !win {
-            format!("command -v bun >/dev/null || curl -fsSL https://bun.sh/install | bash; npm install -g {pkg} --registry={registry} && echo 'OpenClaw 需 Bun 运行时,若刚装了 Bun 请重开终端后使用'")
-        } else if id == "openclaw" {
-            format!("powershell -NoProfile -Command \"if(!(Get-Command bun -ErrorAction SilentlyContinue)){{irm https://bun.sh/install.ps1 | iex}}\" & npm install -g {pkg} --registry={registry}")
-        } else {
-            format!("npm install -g {pkg} --registry={registry}")
-        };
-        run_in_terminal(&script)?;
-        return Ok(format!("已在终端执行 {pkg} 安装,完成后回来刷新状态"));
+        let idc = id.clone();
+        std::thread::spawn(move || {
+            use tauri::Emitter;
+            let res = if cfg!(target_os = "windows") {
+                #[cfg(target_os = "windows")]
+                { run_quiet(Command::new("cmd").args(["/C", &script])) }
+                #[cfg(not(target_os = "windows"))]
+                { Err(std::io::Error::other("windows only")) }
+            } else {
+                Command::new("/bin/zsh").args(["-i", "-l", "-c", &script]).output()
+            };
+            let (ok, tail) = match res {
+                Ok(o) => {
+                    let mut t = String::from_utf8_lossy(&o.stdout).to_string();
+                    t.push_str(&String::from_utf8_lossy(&o.stderr));
+                    (o.status.success(), t)
+                }
+                Err(e) => (false, e.to_string()),
+            };
+            let chars: Vec<char> = tail.chars().collect();
+            let tail: String = chars[chars.len().saturating_sub(400)..].iter().collect();
+            let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": ok, "tail": tail }));
+        });
+        return Ok(format!("正在后台{verb}…完成后自动刷新"));
     }
     Err("该工具暂不支持一键安装".into())
 }

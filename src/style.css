@@ -173,7 +173,9 @@ a { color: inherit; text-decoration: none; }
   background: var(--dark); color: #fff;
 }
 .tool-row:disabled .tool-state { background: #eeeaf0; color: #a8a3b4; }
-
+/* 安装按钮:浅橙底深橙字(深底橙字看不清) */
+.tool-state.st-install { background: #fff0e9; color: #c06a4b; border: 1px solid #f0c9b8; font-weight: 800; }
+.tool-state.st-install.busy { background: #f1eef3; color: #857f95; border-color: #e8e2f0; cursor: default; }
 .footer {
   flex: none;
   margin-top: 6px;
@@ -451,7 +453,6 @@ a { color: inherit; text-decoration: none; }
 /* 工具行改为 div 后的点击区 */
 .tool-row { cursor: pointer; }
 .tool-state { cursor: pointer; }
-.tool-state.st-install { color: #d9714f; font-weight: 800; }
 /* 已安装行右侧操作组:⋯ 菜单(卸载藏这里)+ 启动 */
 .tool-acts { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: none; }
 .tool-menu { position: relative; display: inline-flex; }

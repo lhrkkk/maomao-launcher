@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
@@ -226,6 +227,13 @@ export default function App() {
   const [tk, setTk] = useState(true);
   const [view, setView] = useState<"home" | "invite">("home");
   const topCopyCache = useRef<{ code: string; at: number } | null>(null);
+  // 邀请码注册时生成、终身不变:登录后预取,点右上角复制零等待
+  useEffect(() => {
+    if (!account?.key) { topCopyCache.current = null; return; }
+    invoke<InviteInfo>("invite_info")
+      .then((info) => { if (info.aff_code) topCopyCache.current = { code: info.aff_code, at: Date.now() }; })
+      .catch(() => {});
+  }, [account?.key]);
   const [updPct, setUpdPct] = useState(-1);
   const [busy, setBusy] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -262,8 +270,24 @@ export default function App() {
           if (e.payload?.key) setPendingAuth(e.payload);
         }));
         unsubs.push(await listen<string>("mm-auth-error", (e) => say(e.payload)));
+        // 后台静默安装结果(Rust 线程跑完 emit)
+        unsubs.push(await listen<{ id: string; ok: boolean; tail: string }>("mm-install", (e) => {
+          setInstalling((s) => { const n = new Set(s); n.delete(e.payload.id); return n; });
+          if (e.payload.ok) { say("安装/升级完成 🐾"); refresh(); }
+          else say(`后台安装失败:${e.payload.tail.slice(-160) || "未知错误"}`);
+        }));
       } catch {}
     })();
+    // 终端装完工具切回本窗口时,状态自动刷新(3 秒节流)
+    let lastFocus = 0;
+    const unFocus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (!focused) return;
+      const now = Date.now();
+      if (now - lastFocus < 3000) return;
+      lastFocus = now;
+      refresh();
+    });
+    unsubs.push(() => { unFocus.then((f) => f()); });
     return () => { unsubs.forEach((u) => u()); };
   }, []);
 
@@ -358,6 +382,7 @@ export default function App() {
   const UNINSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi"]);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [confirmUn, setConfirmUn] = useState<string | null>(null);
+  const [installing, setInstalling] = useState<Set<string>>(new Set());
   const confirmUnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const askUninstall = (t: Tool) => {
     if (confirmUnTimer.current) clearTimeout(confirmUnTimer.current);
@@ -368,10 +393,32 @@ export default function App() {
     setMenuOpen(null); setConfirmUn(null);
     try { say(await invoke<string>("uninstall_tool", { id: t.id })); await refresh(); }
     catch (e) { say(`${e}`); }
+    pollTool(t, false, "已卸载");
   };
   const install = async (t: Tool) => {
+    setInstalling((s) => new Set(s).add(t.id));
     try { say(await invoke<string>("install_tool", { id: t.id })); await refresh(); }
-    catch (e) { say(`${e}`); }
+    catch (e) { say(`${e}`); setInstalling((s) => { const n = new Set(s); n.delete(t.id); return n; }); }
+    pollTool(t, true, "安装完成");
+  };
+  const upgrade = async (t: Tool) => {
+    setMenuOpen(null);
+    setInstalling((s) => new Set(s).add(t.id));
+    try { say(await invoke<string>("install_tool", { id: t.id, upgrade: true })); }
+    catch (e) { say(`${e}`); setInstalling((s) => { const n = new Set(s); n.delete(t.id); return n; }); }
+  };
+  // 终端里的安装/卸载要跑一阵:轮询 get_state,状态翻转即提示(上限 15 分钟)
+  const pollTool = (t: Tool, wantInstalled: boolean, label: string) => {
+    const started = Date.now();
+    const poll = setInterval(async () => {
+      try {
+        const s = await invoke<{ tools: Tool[] }>("get_state");
+        setTools(s.tools ?? []);
+        const cur = (s.tools ?? []).find((x) => x.id === t.id);
+        if (!cur || cur.installed === wantInstalled) { clearInterval(poll); say(`${t.name} ${label}`); }
+        else if (Date.now() - started > 15 * 60_000) clearInterval(poll);
+      } catch {}
+    }, 8000);
   };
   const row = (t: Tool) => (
     <div
@@ -389,6 +436,7 @@ export default function App() {
       </span>
       {t.installed ? (
         <span className="tool-acts">
+          <span className={`tool-state st-ok`} onClick={() => launch(t)}>启动 ↗</span>
           {UNINSTALLABLE.has(t.id) && (
             <span className="tool-menu">
               <span className="tool-dots" onClick={(e) => { e.stopPropagation(); setConfirmUn(null); setMenuOpen(menuOpen === t.id ? null : t.id); }}>⋯</span>
@@ -396,6 +444,7 @@ export default function App() {
                 <>
                   <span className="menu-backdrop" onClick={(e) => { e.stopPropagation(); setMenuOpen(null); }} />
                   <span className="tool-menu-pop">
+                    <span className="tool-menu-item" onClick={(e) => { e.stopPropagation(); upgrade(t); }}>升级</span>
                     {confirmUn === t.id
                       ? <span className="tool-menu-item danger" onClick={(e) => { e.stopPropagation(); doUninstall(t); }}>确认卸载</span>
                       : <span className="tool-menu-item danger" onClick={(e) => { e.stopPropagation(); askUninstall(t); }}>卸载</span>}
@@ -404,10 +453,11 @@ export default function App() {
               )}
             </span>
           )}
-          <span className={`tool-state st-ok`} onClick={() => launch(t)}>启动 ↗</span>
         </span>
       ) : INSTALLABLE.has(t.id) ? (
-        <span className="tool-state st-install" onClick={() => install(t)}>安装</span>
+        installing.has(t.id)
+          ? <span className="tool-state st-install busy">安装中…</span>
+          : <span className="tool-state st-install" onClick={() => install(t)}>安装</span>
       ) : (
         <span className={`tool-state st-warn`}>未安装</span>
       )}
