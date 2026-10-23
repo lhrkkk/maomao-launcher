@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
@@ -532,6 +533,8 @@ export default function App() {
   const [installing, setInstalling] = useState<Set<string>>(new Set());
   // Claude Code 可用模型说明卡
   const [mapInfo, setMapInfo] = useState<string[] | null>(null);
+  const [appVer, setAppVer] = useState("");
+  useEffect(() => { getVersion().then(setAppVer).catch(() => {}); }, []);
   const showMap = async () => {
     setMenuPos(null);
     try { const r = await invoke<{ models: string[] }>("claude_model_map"); setMapInfo(r.models ?? []); }
@@ -735,7 +738,7 @@ export default function App() {
       </div>
 
       <div className="footer">
-        <span>binaryworld.world · <a onClick={() => checkUpdate(false)}>检查更新</a></span>
+        <span>binaryworld.world · v{appVer} · <a onClick={() => checkUpdate(false)}>检查更新</a></span>
         <span>猫猫动力 · Made with meow ♡</span>
       </div>
 
