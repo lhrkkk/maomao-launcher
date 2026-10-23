@@ -1246,7 +1246,8 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                     }
                 } else {
                     let mut c = Command::new("cmd");
-                    c.raw_arg(format!("/C start /wait "" "{}" /S", dest.to_string_lossy()));
+                    let q = "\"";
+                    c.raw_arg(format!("/C start /wait {q}{q} {q}{}{q} /S", dest.to_string_lossy()));
                     match run_quiet(&mut c) {
                         Ok(o) if o.status.success() => Ok(()),
                         Ok(o) => Err(format!("安装失败:{}", String::from_utf8_lossy(&o.stderr))),
