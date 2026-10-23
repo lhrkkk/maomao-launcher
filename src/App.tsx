@@ -226,6 +226,10 @@ export default function App() {
   }, []);
   const [tk, setTk] = useState(true);
   const [view, setView] = useState<"home" | "invite">("home");
+  const [updPct, setUpdPct] = useState(-1);
+  const [busy, setBusy] = useState(false);
+  const [tools, setTools] = useState<Tool[]>([]);
+  const [account, setAccount] = useState<LoginInfo | null>(null);
   const topCopyCache = useRef<{ code: string; at: number } | null>(null);
   // 邀请码注册时生成、终身不变:登录后预取,点右上角复制零等待
   useEffect(() => {
@@ -234,10 +238,6 @@ export default function App() {
       .then((info) => { if (info.aff_code) topCopyCache.current = { code: info.aff_code, at: Date.now() }; })
       .catch(() => {});
   }, [account?.key]);
-  const [updPct, setUpdPct] = useState(-1);
-  const [busy, setBusy] = useState(false);
-  const [tools, setTools] = useState<Tool[]>([]);
-  const [account, setAccount] = useState<LoginInfo | null>(null);
   const [ready, setReady] = useState(false);
   const PANEL_HOME = "https://binaryworld.world/panel";
   const [toast, setToast] = useState("");
