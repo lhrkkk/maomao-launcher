@@ -453,23 +453,21 @@ a { color: inherit; text-decoration: none; }
 /* 工具行改为 div 后的点击区 */
 .tool-row { cursor: pointer; }
 .tool-state { cursor: pointer; }
-/* 已安装行右侧操作组:⋯ 菜单(卸载藏这里)+ 启动 */
+/* 已安装行右侧操作组:升级 + 启动 + ⋯ */
 .tool-acts { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: none; }
-.tool-menu { position: relative; display: inline-flex; }
 .tool-dots {
   width: 26px; height: 26px; border-radius: 8px; background: #f1eef3; color: #857f95;
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
   font-size: 13px; line-height: 1; letter-spacing: 1px; user-select: none;
 }
 .tool-dots:hover { color: #312b4f; }
-.menu-backdrop { position: fixed; inset: 0; z-index: 90; }
+.menu-backdrop { position: fixed; inset: 0; z-index: 9998; }
+/* fixed 顶层 + z-index 拉满:不受滚动容器裁剪,永居最高层 */
 .tool-menu-pop {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 95;
+  position: fixed; z-index: 9999; display: flex; flex-direction: column;
   background: #fff; border: 1px solid #ece7ee; border-radius: 10px;
-  box-shadow: 0 12px 30px rgba(34,32,51,.16); padding: 4px; min-width: 96px;
+  box-shadow: 0 12px 30px rgba(34,32,51,.28); padding: 4px; min-width: 96px;
 }
-/* 滚动容器会裁掉向下越界的弹层:组内最后一行改向上弹 */
-.tool-menu-pop.up { top: auto; bottom: calc(100% + 4px); }
 .tool-menu-item {
   display: block; padding: 8px 12px; font-size: 11px; font-weight: 700;
   color: #544e66; border-radius: 7px; cursor: pointer; white-space: nowrap; text-align: center;

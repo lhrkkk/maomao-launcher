@@ -282,7 +282,7 @@ export default function App() {
     // 终端装完工具切回本窗口时,状态自动刷新(3 秒节流)
     let lastFocus = 0;
     const unFocus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-      if (!focused) return;
+      if (!focused) { setMenuPos(null); return; } // 失焦收起 ⋯ 菜单
       const now = Date.now();
       if (now - lastFocus < 3000) return;
       lastFocus = now;
@@ -381,7 +381,7 @@ export default function App() {
   const INSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi", "claude-desktop", "codex-desktop"]);
   // ⋯ 菜单对全部已安装工具可用(桌面版卸载=定位/Finder/系统设置)
   const UNINSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi", "claude-desktop", "codex-desktop"]);
-  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ id: string; top: number; left: number } | null>(null);
   const [installing, setInstalling] = useState<Set<string>>(new Set());
   // 工具版本信息(启动后懒检查):{cur, latest};可升级的行内直接亮"升级"按钮
   const [verInfo, setVerInfo] = useState<Record<string, { cur?: string; latest?: string }>>({});
@@ -400,11 +400,12 @@ export default function App() {
     });
   }, [tools]);
   const upgradable = (t: Tool) => {
+    if (t.id === "grok" || t.id === "hermes") return true; // 无版本渠道,行内常显(重跑官方脚本幂等)
     const v = verInfo[t.id];
     return !!(v?.cur && v?.latest && v.cur !== v.latest);
   };
   const doUninstall = async (t: Tool) => {
-    setMenuOpen(null);
+    setMenuPos(null);
     try { say(await invoke<string>("uninstall_tool", { id: t.id })); await refresh(); }
     catch (e) { say(`${e}`); }
     pollTool(t, false, "已卸载");
@@ -416,7 +417,7 @@ export default function App() {
     pollTool(t, true, "安装完成");
   };
   const upgrade = async (t: Tool) => {
-    setMenuOpen(null);
+    setMenuPos(null);
     setInstalling((s) => new Set(s).add(t.id));
     try { say(await invoke<string>("install_tool", { id: t.id, upgrade: true })); }
     catch (e) { say(`${e}`); setInstalling((s) => { const n = new Set(s); n.delete(t.id); return n; }); }
@@ -434,7 +435,7 @@ export default function App() {
       } catch {}
     }, 8000);
   };
-  const row = (t: Tool, isLast = false) => (
+  const row = (t: Tool) => (
     <div
       key={t.id}
       className="tool-row"
@@ -457,21 +458,12 @@ export default function App() {
           )}
           <span className={`tool-state st-ok`} onClick={() => launch(t)}>启动 ↗</span>
           {UNINSTALLABLE.has(t.id) && (
-            <span className="tool-menu">
-              <span className="tool-dots" onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === t.id ? null : t.id); }}>⋯</span>
-              {menuOpen === t.id && (
-                <>
-                  <span className="menu-backdrop" onClick={(e) => { e.stopPropagation(); setMenuOpen(null); }} />
-                  {/* 滚动容器会裁掉越界弹层:组内最后一行向上弹 */}
-                  <span className={`tool-menu-pop${isLast ? " up" : ""}`}>
-                    {(t.id === "grok" || t.id === "hermes") && (
-                      <span className="tool-menu-item" onClick={(e) => { e.stopPropagation(); upgrade(t); }}>升级</span>
-                    )}
-                    <span className="tool-menu-item danger" onClick={(e) => { e.stopPropagation(); doUninstall(t); }}>卸载</span>
-                  </span>
-                </>
-              )}
-            </span>
+            <span className="tool-dots" onClick={(e) => {
+              e.stopPropagation();
+              if (menuPos?.id === t.id) { setMenuPos(null); return; }
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              setMenuPos({ id: t.id, top: r.bottom + 5, left: Math.max(8, r.right - 96) });
+            }}>⋯</span>
           )}
         </span>
       ) : INSTALLABLE.has(t.id) ? (
@@ -483,6 +475,8 @@ export default function App() {
       )}
     </div>
   );
+
+  const menuTool = menuPos ? tools.find((x) => x.id === menuPos.id) : null;
 
   return (
     <div className="shell">
@@ -572,9 +566,9 @@ export default function App() {
       {view === "home" ? (
       <div className="listwrap">
         <div className="group-title">桌面应用</div>
-        <div className="tools">{desktop.map((t, i) => row(t, i === desktop.length - 1))}</div>
+        <div className="tools">{desktop.map(row)}</div>
         <div className="group-title">命令行工具</div>
-        <div className="tools">{cli.map((t, i) => row(t, i === cli.length - 1))}</div>
+        <div className="tools">{cli.map(row)}</div>
       </div>
 
       ) : (
@@ -607,6 +601,16 @@ export default function App() {
       )}
 
       <div className={`toast ${toast ? "show" : ""}`} role="status">{toast}</div>
+
+      {/* ⋯ 菜单:fixed 顶层渲染,不受滚动容器裁剪,z-index 拉满 */}
+      {menuTool && menuPos && (
+        <>
+          <div className="menu-backdrop" onClick={() => setMenuPos(null)} />
+          <div className="tool-menu-pop" style={{ top: menuPos.top, left: menuPos.left }}>
+            <span className="tool-menu-item danger" onClick={() => doUninstall(menuTool)}>卸载 {menuTool.name}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
