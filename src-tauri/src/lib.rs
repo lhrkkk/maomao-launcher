@@ -1421,6 +1421,7 @@ async fn claude_model_map() -> Result<serde_json::Value, String> {
         let g = if m.contains("opus") { "opus" }
             else if m.contains("sonnet") { "sonnet" }
             else if m.contains("haiku") { "haiku" }
+            else if m.contains("fable") { "fable" }
             else { "其他" };
         groups.entry(g.to_string()).or_default().push(m.clone());
     }
