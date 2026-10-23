@@ -105,7 +105,7 @@ function InviteCard({ say, onClaimed, ak }: { say: (t: string) => void; onClaime
   );
 }
 
-// 调用量图表(近 8 天):与控制台 panel 同款折线+面积+模型系列,窄屏适配
+// 调用量图表(近 7 天):与控制台 panel 同款折线+面积+模型系列,窄屏适配
 const UA_COLORS = ['#1664FF', '#1AC6FF', '#FF8A00', '#3CC780', '#7442D4', '#FFC400', '#304D77', '#B48DEB', '#009488', '#FF7DDA'];
 const fmtTok = (n: number): [string, string] => {
   if (n >= 1e6) return [(n / 1e6).toFixed(2), "M"];
@@ -150,7 +150,6 @@ interface AxisPoint { label: string; tip: string }
 interface UsageData { series: SeriesPoint[]; axis: AxisPoint[]; granularity: string; week_calls: number; week_usd: number; today_calls: number; today_usd: number }
 function UsageChart({ ak, cny }: { ak?: string; cny: number }) {
   const [data, setData] = useState<UsageData | null>(null);
-  const [hover, setHover] = useState<number | null>(null);
   const lastLoad = useRef(0);
   const load = async () => {
     if (!ak) return;
@@ -178,9 +177,24 @@ function UsageChart({ ak, cny }: { ak?: string; cny: number }) {
   });
   const grids = [6, 28, 50, 72, 94].map((y) => `<line x1="0" y1="${y}" x2="100" y2="${y}" stroke="#ebedf0" stroke-width="1" vector-effect="non-scaling-stroke"></line>`).join("");
   const ticks = [1, 0.75, 0.5, 0.25, 0].map((f, i) => `<span style="top:${[6, 28, 50, 72, 94][i]}%">${fmtAxis(max * f)}</span>`).join("");
+  const tipHtml = (i: number) => (
+    <>
+      <div className="ua-tip-d">{axis[i].tip || axis[i].label}</div>
+      {series.map((sr, si) => {
+        const parts = fmtTok(sr.points[i] || 0);
+        return (
+          <div className="ua-tip-r" key={si}>
+            <i style={{ background: UA_COLORS[si % UA_COLORS.length] }} />
+            <span>{si === 0 ? sr.name : sr.name + " 消耗"}</span>
+            <em>{parts[0]} {parts[1]}</em>
+          </div>
+        );
+      })}
+    </>
+  );
   return (
     <details className="rcfold" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
-      <summary>调用量{data ? <span className="uc-today">今日 {data.today_calls} 次 · ¥{(data.today_usd * cny).toFixed(2)} · 8天 ¥{(data.week_usd * cny).toFixed(2)}</span> : null}<span className="rc-caret">▾</span></summary>
+      <summary>调用量{data ? <span className="uc-today">今日 {data.today_calls} 次 · ¥{(data.today_usd * cny).toFixed(2)} · 7天 ¥{(data.week_usd * cny).toFixed(2)}</span> : null}<span className="rc-caret">▾</span></summary>
       {data === null ? <div className="keyhint">加载中…</div> : !series.length ? <div className="keyhint">暂无数据</div> : (
         <div className="ucwrap">
           <div className="ua-lglist">
@@ -196,31 +210,17 @@ function UsageChart({ ak, cny }: { ak?: string; cny: number }) {
           </div>
           <div className="ua-chart">
             <div className="ua-y" dangerouslySetInnerHTML={{ __html: ticks }} />
-            <div className="ua-plot" onMouseMove={(ev) => {
-              const r = ev.currentTarget.getBoundingClientRect();
-              if (!r.width) return;
-              setHover(Math.max(0, Math.min(n - 1, Math.round(((ev.clientX - r.left) / r.width) * (n - 1)))));
-            }} onMouseLeave={() => setHover(null)}>
+            <div className="ua-plot">
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" dangerouslySetInnerHTML={{ __html: grids + fills + lines }} />
-              {hover !== null && <div className="ua-cross" style={{ left: xOf(hover) + "%" }} />}
-              {hover !== null && series.map((sr, si) => (
-                <i key={si} className="ua-dot" style={{ background: UA_COLORS[si % UA_COLORS.length], left: xOf(hover) + "%", top: yOf(sr.points[hover] || 0) + "%" }} />
-              ))}
-              {hover !== null && (
-                <div className="ua-tip" style={{ left: xOf(hover) > 62 ? "auto" : xOf(hover) + 2 + "%", right: xOf(hover) > 62 ? 100 - xOf(hover) + 2 + "%" : "auto" }}>
-                  <div className="ua-tip-d">{axis[hover].tip || axis[hover].label}</div>
-                  {series.map((sr, si) => {
-                    const parts = fmtTok(sr.points[hover] || 0);
-                    return (
-                      <div className="ua-tip-r" key={si}>
-                        <i style={{ background: UA_COLORS[si % UA_COLORS.length] }} />
-                        <span>{si === 0 ? sr.name : sr.name + " 消耗"}</span>
-                        <em>{parts[0]} {parts[1]}</em>
-                      </div>
-                    );
-                  })}
+              {axis.map((a, i) => (
+                <div key={i} className="ua-col" style={{ left: `${(i / n) * 100}%`, width: `${100 / n}%` }}>
+                  <div className="ua-cross" />
+                  {series.map((sr, si) => (
+                    <i key={si} className="ua-dot" style={{ background: UA_COLORS[si % UA_COLORS.length], top: `${yOf(sr.points[i] || 0)}%` }} />
+                  ))}
+                  <div className="ua-tip" style={i >= n - 2 ? { right: "8px" } : { left: "calc(50% + 8px)" }}>{tipHtml(i)}</div>
                 </div>
-              )}
+              ))}
             </div>
           </div>
           <div className="ua-x">{axis.map((a, i) => <span key={i}>{i === n - 1 || i % 2 === 0 ? a.label : ""}</span>)}</div>

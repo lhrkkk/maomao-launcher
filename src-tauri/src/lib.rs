@@ -726,10 +726,10 @@ struct UsageData {
     today_calls: i64, today_usd: f64,
 }
 
-/// 近 8 天调用量(sk-key 鉴权),app「更多」页图表用;series/axis 与控制台同构
+/// 近 7 天调用量(sk-key 鉴权),app「更多」页图表用;series/axis 与控制台同构
 #[tauri::command]
 async fn usage_daily() -> Result<UsageData, String> {
-    let resp = mm_get("/mm-admin/usage?days=8")?;
+    let resp = mm_get("/mm-admin/usage?days=7")?;
     if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
     let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
     if !api_success(&v) { return Err(format!("获取调用量失败:{}", api_error(&v))); }
