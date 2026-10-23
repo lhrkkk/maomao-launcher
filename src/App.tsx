@@ -545,7 +545,7 @@ export default function App() {
       }}>⧉</button>
 
       <div className="viewtabs">
-        <button className={`tab ${view === "home" ? "on" : ""}`} onClick={() => { setView("home"); refresh(); }}>工具</button>
+        <button className={`tab ${view === "home" ? "on" : ""}`} onClick={() => { setView("home"); refresh(); }}>启动</button>
         <button className={`tab ${view === "invite" ? "on" : ""}`} onClick={() => setView("invite")}>更多</button>
       </div>
 
