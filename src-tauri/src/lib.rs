@@ -89,11 +89,38 @@ fn run_quiet(cmd: &mut Command) -> std::io::Result<std::process::Output> {
 
 #[cfg(target_os = "macos")]
 fn which_in_login_shell(cmd: &str) -> bool {
-    Command::new("zsh")
-        .args(["-l", "-c", &format!("command -v {cmd}")])
-        .output()
-        .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty())
-        .unwrap_or(false)
+    // GUI 进程 PATH 受限:login shell(.zprofile)→ 交互 login shell(.zshrc,mise/nvm 常在此激活)
+    // → 常见安装目录兜底(mise shims、官方 curl 脚本、homebrew 等)
+    let probe = |interactive: bool| {
+        let mut args: Vec<String> = vec!["-l".into()];
+        if interactive { args.push("-i".into()); }
+        args.extend(["-c".into(), format!("command -v {cmd}")]);
+        Command::new("/bin/zsh")
+            .args(&args)
+            .output()
+            .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+            .unwrap_or(false)
+    };
+    if probe(false) || probe(true) { return true; }
+    if let Ok(home) = std::env::var("HOME") {
+        let h = PathBuf::from(home);
+        let cands: [PathBuf; 10] = [
+            h.join(".local/share/mise/shims"),
+            h.join(".local/bin"),
+            h.join(".opencode/bin"),
+            h.join(".bun/bin"),
+            h.join(".grok/bin"),
+            h.join(".volta/bin"),
+            h.join(".npm-global/bin"),
+            h.join("Library/pnpm"),
+            PathBuf::from("/opt/homebrew/bin"),
+            PathBuf::from("/usr/local/bin"),
+        ];
+        for d in cands {
+            if d.join(cmd).exists() { return true; }
+        }
+    }
+    false
 }
 
 #[cfg(target_os = "windows")]
@@ -292,7 +319,7 @@ pub struct AppState {
 }
 
 #[tauri::command]
-fn get_state() -> AppState {
+async fn get_state() -> AppState {
     let login = read_json(&state_path().unwrap_or_default()).and_then(|v| {
         let u = v.get("username")?.as_str()?.to_string();
         let k = v.get("key_masked")?.as_str()?.to_string();
@@ -564,7 +591,7 @@ fn apply_configs(key: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn save_key(key: String) -> Result<(), String> {
+async fn save_key(key: String) -> Result<(), String> {
     let key = key.trim().to_string();
     if key.is_empty() { return Err("API Key 不能为空".into()); }
     apply_configs(&key)?;
@@ -632,7 +659,7 @@ pub struct TokenEntry {
 }
 
 #[tauri::command]
-fn list_tokens() -> Result<Vec<TokenEntry>, String> {
+async fn list_tokens() -> Result<Vec<TokenEntry>, String> {
     let resp = mm_get("/mm-admin/tokens")?;
     if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
     let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
@@ -656,7 +683,7 @@ fn list_tokens() -> Result<Vec<TokenEntry>, String> {
 // ---------- 接管开关(翻墙软件式:关=立即还原配置,登录记录保留) ----------
 
 #[tauri::command]
-fn takeover(app: tauri::AppHandle, on: bool) -> Result<(), String> {
+async fn takeover(app: tauri::AppHandle, on: bool) -> Result<(), String> {
     let st = stored_state().ok_or("尚未登录或保存过 Key")?;
     let key = st.get("key").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
     if key.is_empty() { return Err("尚未配置密钥,请先登录".into()); }
@@ -687,7 +714,7 @@ pub struct RecentCall {
 }
 
 #[tauri::command]
-fn recent_calls() -> Result<Vec<RecentCall>, String> {
+async fn recent_calls() -> Result<Vec<RecentCall>, String> {
     let resp = mm_get("/mm-admin/log-key")?;
     if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
     let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
@@ -723,7 +750,7 @@ pub struct InviteInfo {
 }
 
 #[tauri::command]
-fn invite_claim() -> Result<Balance, String> {
+async fn invite_claim() -> Result<Balance, String> {
     let key = stored_key()?;
     let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
     let resp = client.post(format!("{SITE}/mm-admin/invite-claim"))
@@ -743,7 +770,7 @@ fn invite_claim() -> Result<Balance, String> {
 }
 
 #[tauri::command]
-fn invite_info() -> Result<InviteInfo, String> {
+async fn invite_info() -> Result<InviteInfo, String> {
     let resp = mm_get("/mm-admin/invite-key")?;
     if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
     let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
@@ -756,7 +783,7 @@ fn invite_info() -> Result<InviteInfo, String> {
 }
 
 #[tauri::command]
-fn get_balance() -> Result<Balance, String> {
+async fn get_balance() -> Result<Balance, String> {
     let resp = mm_get("/mm-admin/balance")?;
     if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
     let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
@@ -768,7 +795,7 @@ fn get_balance() -> Result<Balance, String> {
 }
 
 #[tauri::command]
-fn create_token(name: String) -> Result<(), String> {
+async fn create_token(name: String) -> Result<(), String> {
     let token = stored_access_token()?;
     let name = name.trim().to_string();
     if name.is_empty() { return Err("密钥名称不能为空".into()); }
@@ -790,7 +817,7 @@ fn create_token(name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn use_token(id: i64) -> Result<String, String> {
+async fn use_token(id: i64) -> Result<String, String> {
     let key0 = stored_key()?;
     let client = http_client().map_err(|e| format!("网络初始化失败:{e}"))?;
     let resp = client.post(format!("{SITE}/mm-admin/token-key"))
@@ -844,7 +871,7 @@ fn deep_link_setup_impl(key: &str, username: &str, at: Option<&str>, token_id: O
 }
 
 #[tauri::command]
-fn deep_link_setup(key: String, username: String, at: Option<String>, id: Option<i64>) -> Result<String, String> {
+async fn deep_link_setup(key: String, username: String, at: Option<String>, id: Option<i64>) -> Result<String, String> {
     deep_link_setup_impl(&key, &username, at.as_deref(), id)
 }
 
@@ -872,7 +899,7 @@ fn handle_auth_urls(app: &tauri::AppHandle, urls: Vec<tauri::Url>) {
 }
 
 #[tauri::command]
-fn login_and_setup(username: String, password: String, turnstile: Option<String>) -> Result<String, String> {
+async fn login_and_setup(username: String, password: String, turnstile: Option<String>) -> Result<String, String> {
     if username.trim().is_empty() || password.is_empty() {
         return Err("请输入账号和密码".into());
     }
@@ -1016,7 +1043,7 @@ fn restore_files() -> Result<(), String> {
 
 /// 退出账号:还原配置 + 忘掉登录记录
 #[tauri::command]
-fn logout() -> Result<(), String> {
+async fn logout() -> Result<(), String> {
     restore_files()?;
     let _ = fs::remove_file(state_path()?);
     Ok(())
@@ -1052,9 +1079,9 @@ fn run_in_terminal(script: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 安装工具:桌面版走自托管安装包;CLI 走官方命令(缺 Node 先引导装 Node,npmmirror 源)
+/// 安装工具:桌面版走自托管安装包;CLI 按官方推荐方式(curl 脚本/npm;缺 Node 先引导,npmmirror 源)
 #[tauri::command]
-fn install_tool(id: String) -> Result<String, String> {
+async fn install_tool(id: String) -> Result<String, String> {
     let arch = std::env::consts::ARCH;
     let win = cfg!(target_os = "windows");
     // 桌面版:自托管安装包直链
@@ -1072,22 +1099,47 @@ fn install_tool(id: String) -> Result<String, String> {
         open_external(&format!("{SITE}{path}"));
         return Ok("已开始下载安装包,请按提示完成安装".into());
     }
-    // CLI:npm 系(缺 Node 引导)
+    // CLI:官方 curl 脚本系(仅 macOS/Linux;Windows 走各自分支)
+    if !win {
+        let curl_script: Option<&str> = match id.as_str() {
+            // opencode 官方推荐脚本安装(装到 ~/.opencode/bin),比 npm 干净
+            "opencode" => Some("curl -fsSL https://opencode.ai/install | bash"),
+            "grok" => Some("curl -fsSL https://x.ai/cli/install.sh | bash"),
+            "hermes" => Some("curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"),
+            _ => None,
+        };
+        if let Some(script) = curl_script {
+            run_in_terminal(script)?;
+            return Ok("已在终端执行官方安装脚本,完成后回来刷新状态".into());
+        }
+    } else {
+        // Windows:Grok 官方暂无原生安装(建议 WSL),Hermes 用官方 PowerShell 脚本
+        match id.as_str() {
+            "grok" => {
+                open_external("https://x.ai/build");
+                return Ok("Grok 暂无 Windows 原生安装,已打开官方文档(可用 WSL)".into());
+            }
+            "hermes" => {
+                let script = "powershell -NoProfile -Command \"iex (irm https://hermes-agent.nousresearch.com/install.ps1)\"";
+                run_in_terminal(&script)?;
+                return Ok("已在终端执行 Hermes 官方安装脚本,完成后回来刷新状态".into());
+            }
+            _ => {}
+        }
+    }
+    // CLI:npm 系(缺 Node 引导;openclaw 需先备 Bun 运行时)
     let npm_pkg: Option<&str> = match id.as_str() {
         "claude" => Some("@anthropic-ai/claude-code"),
         "codex" => Some("@openai/codex"),
         "gemini" => Some("@google/gemini-cli"),
         "opencode" => Some("opencode-ai"),
+        "openclaw" => Some("openclaw"),
+        "pi" => Some("@mariozechner/pi-coding-agent"),
         _ => None,
     };
     if let Some(pkg) = npm_pkg {
-        #[cfg(target_os = "windows")]
-        let node_ok = run_quiet(Command::new("cmd").args(["/C", "node -v"]))
-            .map(|o| o.status.success()).unwrap_or(false);
-        #[cfg(not(target_os = "windows"))]
-        let node_ok = Command::new("node").arg("-v").output()
-            .map(|o| o.status.success()).unwrap_or(false);
-        if !node_ok {
+        // GUI 进程 PATH 不可靠(node 常由 mise/brew 管理),走登录 shell 检测链
+        if !which_in_login_shell("node") {
             let node_url = if win {
                 "https://cdn.npmmirror.com/binaries/node/v22.14.0/node-v22.14.0-x64.msi"
             } else {
@@ -1096,15 +1148,56 @@ fn install_tool(id: String) -> Result<String, String> {
             open_external(node_url);
             return Ok("未检测到 Node,已打开 Node 安装器(装完后回来再点安装)".into());
         }
-        let script = format!("npm install -g {pkg} --registry=https://registry.npmmirror.com");
+        let registry = "https://registry.npmmirror.com";
+        let script = if id == "openclaw" && !win {
+            format!("command -v bun >/dev/null || curl -fsSL https://bun.sh/install | bash; npm install -g {pkg} --registry={registry} && echo 'OpenClaw 需 Bun 运行时,若刚装了 Bun 请重开终端后使用'")
+        } else if id == "openclaw" {
+            format!("powershell -NoProfile -Command \"if(!(Get-Command bun -ErrorAction SilentlyContinue)){{irm https://bun.sh/install.ps1 | iex}}\" & npm install -g {pkg} --registry={registry}")
+        } else {
+            format!("npm install -g {pkg} --registry={registry}")
+        };
         run_in_terminal(&script)?;
         return Ok(format!("已在终端执行 {pkg} 安装,完成后回来刷新状态"));
     }
     Err("该工具暂不支持一键安装".into())
 }
 
+/// 卸载工具:npm 系走 npm uninstall;opencode(macOS)删官方目录;其余打开官方文档
 #[tauri::command]
-fn launch(id: String) -> Result<(), String> {
+async fn uninstall_tool(id: String) -> Result<String, String> {
+    let win = cfg!(target_os = "windows");
+    let npm_pkg: Option<&str> = match (id.as_str(), win) {
+        ("claude", _) => Some("@anthropic-ai/claude-code"),
+        ("codex", _) => Some("@openai/codex"),
+        ("gemini", _) => Some("@google/gemini-cli"),
+        ("opencode", true) => Some("opencode-ai"),
+        ("openclaw", _) => Some("openclaw"),
+        ("pi", _) => Some("@mariozechner/pi-coding-agent"),
+        _ => None,
+    };
+    if let Some(pkg) = npm_pkg {
+        run_in_terminal(&format!("npm uninstall -g {pkg}"))?;
+        return Ok(format!("已在终端执行卸载 {pkg},完成后回来刷新状态"));
+    }
+    match id.as_str() {
+        "opencode" if !win => {
+            run_in_terminal("rm -rf ~/.opencode/bin && echo 'opencode 已删除(配置保留;若由 mise/brew 安装请用对应方式卸载)'")?;
+            Ok("已删除 opencode 程序,配置保留".into())
+        }
+        "grok" => {
+            open_external("https://x.ai/build");
+            Ok("Grok 卸载请按官方文档操作(已打开)".into())
+        }
+        "hermes" => {
+            open_external("https://hermes-agent.nousresearch.com/docs");
+            Ok("Hermes 卸载请按官方文档操作(已打开)".into())
+        }
+        _ => Err("该工具暂不支持一键卸载".into()),
+    }
+}
+
+#[tauri::command]
+async fn launch(id: String) -> Result<(), String> {
     let spec = tools_spec().into_iter().find(|t| t.0 == id)
         .ok_or_else(|| format!("未知工具:{id}"))?;
     match spec.2 {
@@ -1157,7 +1250,7 @@ fn launch(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn open_url(url: String) -> Result<(), String> {
+async fn open_url(url: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     Command::new("open").arg(&url).output().map_err(|e| format!("打开失败:{e}"))?;
     #[cfg(target_os = "windows")]
@@ -1202,7 +1295,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim, install_tool])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim, install_tool, uninstall_tool])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 

@@ -225,6 +225,7 @@ export default function App() {
   }, []);
   const [tk, setTk] = useState(true);
   const [view, setView] = useState<"home" | "invite">("home");
+  const topCopyCache = useRef<{ code: string; at: number } | null>(null);
   const [updPct, setUpdPct] = useState(-1);
   const [busy, setBusy] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -352,7 +353,22 @@ export default function App() {
   const cli = tools.filter((t) => t.kind === "Cli");
   const desktop = tools.filter((t) => t.kind === "Desktop");
 
-  const INSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "claude-desktop", "codex-desktop"]);
+  const INSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi", "claude-desktop", "codex-desktop"]);
+  // 可一键卸载的 CLI(桌面版走系统卸载,不在此列);入口藏在 ⋯ 菜单里
+  const UNINSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi"]);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [confirmUn, setConfirmUn] = useState<string | null>(null);
+  const confirmUnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const askUninstall = (t: Tool) => {
+    if (confirmUnTimer.current) clearTimeout(confirmUnTimer.current);
+    setConfirmUn(t.id);
+    confirmUnTimer.current = setTimeout(() => setConfirmUn(null), 4000);
+  };
+  const doUninstall = async (t: Tool) => {
+    setMenuOpen(null); setConfirmUn(null);
+    try { say(await invoke<string>("uninstall_tool", { id: t.id })); await refresh(); }
+    catch (e) { say(`${e}`); }
+  };
   const install = async (t: Tool) => {
     try { say(await invoke<string>("install_tool", { id: t.id })); await refresh(); }
     catch (e) { say(`${e}`); }
@@ -372,7 +388,24 @@ export default function App() {
         )}
       </span>
       {t.installed ? (
-        <span className={`tool-state st-ok`} onClick={() => launch(t)}>启动 ↗</span>
+        <span className="tool-acts">
+          {UNINSTALLABLE.has(t.id) && (
+            <span className="tool-menu">
+              <span className="tool-dots" onClick={(e) => { e.stopPropagation(); setConfirmUn(null); setMenuOpen(menuOpen === t.id ? null : t.id); }}>⋯</span>
+              {menuOpen === t.id && (
+                <>
+                  <span className="menu-backdrop" onClick={(e) => { e.stopPropagation(); setMenuOpen(null); }} />
+                  <span className="tool-menu-pop">
+                    {confirmUn === t.id
+                      ? <span className="tool-menu-item danger" onClick={(e) => { e.stopPropagation(); doUninstall(t); }}>确认卸载</span>
+                      : <span className="tool-menu-item danger" onClick={(e) => { e.stopPropagation(); askUninstall(t); }}>卸载</span>}
+                  </span>
+                </>
+              )}
+            </span>
+          )}
+          <span className={`tool-state st-ok`} onClick={() => launch(t)}>启动 ↗</span>
+        </span>
       ) : INSTALLABLE.has(t.id) ? (
         <span className="tool-state st-install" onClick={() => install(t)}>安装</span>
       ) : (
@@ -447,11 +480,17 @@ export default function App() {
       </div>
 
       <button className="topcopy" title="复制邀请链接" onClick={async () => {
+        const cached = topCopyCache.current;
+        const copy = (code: string) => {
+          const link = `https://binaryworld.world/register?aff=${code}`;
+          navigator.clipboard?.writeText(link).then(() => say("邀请链接已复制 🐾"), () => say(link));
+        };
+        if (cached && Date.now() - cached.at < 60_000) { copy(cached.code); return; }
         try {
           const info = await invoke<InviteInfo>("invite_info");
           if (!info.aff_code) { say("暂无邀请码,请先登录"); return; }
-          const link = `https://binaryworld.world/register?aff=${info.aff_code}`;
-          navigator.clipboard?.writeText(link).then(() => say("邀请链接已复制 🐾"), () => say(link));
+          topCopyCache.current = { code: info.aff_code, at: Date.now() };
+          copy(info.aff_code);
         } catch { say("请先登录后再复制邀请链接"); }
       }}>⧉</button>
 

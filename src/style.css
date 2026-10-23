@@ -452,6 +452,27 @@ a { color: inherit; text-decoration: none; }
 .tool-row { cursor: pointer; }
 .tool-state { cursor: pointer; }
 .tool-state.st-install { color: #d9714f; font-weight: 800; }
+/* 已安装行右侧操作组:⋯ 菜单(卸载藏这里)+ 启动 */
+.tool-acts { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.tool-menu { position: relative; display: inline-flex; }
+.tool-dots {
+  width: 26px; height: 26px; border-radius: 8px; background: #f1eef3; color: #857f95;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  font-size: 13px; line-height: 1; letter-spacing: 1px; user-select: none;
+}
+.tool-dots:hover { color: #312b4f; }
+.menu-backdrop { position: fixed; inset: 0; z-index: 40; }
+.tool-menu-pop {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 45;
+  background: #fff; border: 1px solid #ece7ee; border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(34,32,51,.16); padding: 4px; min-width: 96px;
+}
+.tool-menu-item {
+  display: block; padding: 8px 12px; font-size: 11px; font-weight: 700;
+  color: #544e66; border-radius: 7px; cursor: pointer; white-space: nowrap; text-align: center;
+}
+.tool-menu-item:hover { background: #f7f3f6; }
+.tool-menu-item.danger { color: #b0563f; }
 /* 全局右上角复制邀请 */
 .topcopy {
   position: absolute; top: 14px; right: 14px; z-index: 20;
