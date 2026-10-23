@@ -230,12 +230,13 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
   const [account, setAccount] = useState<LoginInfo | null>(null);
-  const topCopyCache = useRef<{ code: string; at: number } | null>(null);
+  // 邀请码终身不变:登录后预取一次,缓存永久有效(登出才清)
+  const topCopyCache = useRef<string | null>(null);
   // 邀请码注册时生成、终身不变:登录后预取,点右上角复制零等待
   useEffect(() => {
     if (!account?.key) { topCopyCache.current = null; return; }
     invoke<InviteInfo>("invite_info")
-      .then((info) => { if (info.aff_code) topCopyCache.current = { code: info.aff_code, at: Date.now() }; })
+      .then((info) => { if (info.aff_code) topCopyCache.current = info.aff_code; })
       .catch(() => {});
   }, [account?.key]);
   const [ready, setReady] = useState(false);
@@ -553,16 +554,15 @@ export default function App() {
       </div>
 
       <button className="topcopy" title="复制邀请链接" onClick={async () => {
-        const cached = topCopyCache.current;
         const copy = (code: string) => {
           const link = `https://binaryworld.world/register?aff=${code}`;
           navigator.clipboard?.writeText(link).then(() => say("邀请链接已复制 🐾"), () => say(link));
         };
-        if (cached && Date.now() - cached.at < 60_000) { copy(cached.code); return; }
+        if (topCopyCache.current) { copy(topCopyCache.current); return; }
         try {
           const info = await invoke<InviteInfo>("invite_info");
           if (!info.aff_code) { say("暂无邀请码,请先登录"); return; }
-          topCopyCache.current = { code: info.aff_code, at: Date.now() };
+          topCopyCache.current = info.aff_code;
           copy(info.aff_code);
         } catch { say("请先登录后再复制邀请链接"); }
       }}>⧉</button>
