@@ -44,8 +44,8 @@ if ! gh run watch "$RID" --exit-status >/dev/null 2>&1; then
 fi
 rm -rf "/tmp/win-dist-$VER" && mkdir -p "/tmp/win-dist-$VER"
 gh run download "$RID" -D "/tmp/win-dist-$VER"
-cp "/tmp/win-dist-$VER/maomao-windows/MaoMao Token_${VER}_x64-setup.exe" "/tmp/Maomao-Token-$VER-win-x64.exe"
-cp "/tmp/win-dist-$VER/maomao-windows/MaoMao Token_${VER}_x64-setup.exe.sig" /tmp/maomao-win.exe.sig
+cp "$(find "/tmp/win-dist-$VER/maomao-windows" -name "*_x64-setup.exe" | head -1)" "/tmp/Maomao-Token-$VER-win-x64.exe"
+cp "$(find "/tmp/win-dist-$VER/maomao-windows" -name "*_x64-setup.exe.sig" | head -1)" /tmp/maomao-win.exe.sig
 ZIP=$(find "/tmp/win-dist-$VER" -name "Maomao-Token-$VER-win-x64.zip" | head -1)
 test -n "$ZIP" && test -f /tmp/maomao-win.exe.sig
 echo "artifacts ok"

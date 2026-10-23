@@ -1024,6 +1024,85 @@ fn logout() -> Result<(), String> {
 
 // ---------- 启动与打开 ----------
 
+// ---------- 安装 agent ----------
+
+fn open_external(url: &str) {
+    #[cfg(target_os = "macos")]
+    { let _ = Command::new("open").arg(url).output(); }
+    #[cfg(target_os = "windows")]
+    { use std::os::windows::process::CommandExt; let mut c = Command::new("cmd"); let _ = c.raw_arg(format!("/C start \"\" \"{url}\"")); let _ = run_quiet(&mut c); }
+}
+
+fn run_in_terminal(script: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let out = Command::new("osascript").args(["-e", &format!(
+        "tell application \"Terminal\" to activate\ntell application \"Terminal\" to do script \"{}\"",
+        script
+    )]).output().map_err(|e| format!("打开终端失败:{e}"))?;
+    #[cfg(target_os = "windows")]
+    let out = {
+        use std::os::windows::process::CommandExt;
+        let mut c = Command::new("cmd");
+        c.raw_arg(format!("/C start \"猫猫安装\" cmd /K {script}"));
+        c.output()
+    }.map_err(|e| format!("打开终端失败:{e}"))?;
+    if !out.status.success() {
+        return Err(format!("启动失败:{}", String::from_utf8_lossy(&out.stderr)));
+    }
+    Ok(())
+}
+
+/// 安装工具:桌面版走自托管安装包;CLI 走官方命令(缺 Node 先引导装 Node,npmmirror 源)
+#[tauri::command]
+fn install_tool(id: String) -> Result<String, String> {
+    let arch = std::env::consts::ARCH;
+    let win = cfg!(target_os = "windows");
+    // 桌面版:自托管安装包直链
+    let desktop_url: Option<String> = match (id.as_str(), win, arch) {
+        ("claude-desktop", false, "aarch64") => Some("/Claude-mac-arm64.dmg".into()),
+        ("claude-desktop", false, "x86_64") => Some("/Claude-mac-x64.dmg".into()),
+        ("claude-desktop", true, "x86_64") => Some("/Claude-win-x64.exe".into()),
+        ("codex-desktop", false, "aarch64") => Some("/Codex-mac-arm64.dmg".into()),
+        ("codex-desktop", false, "x86_64") => Some("/Codex-mac-x64.dmg".into()),
+        ("codex-desktop", true, "x86_64") => Some("/Codex-win-x64.msix".into()),
+        ("codex-desktop", true, "aarch64") => Some("/Codex-win-arm64.msix".into()),
+        _ => None,
+    };
+    if let Some(path) = desktop_url {
+        open_external(&format!("{SITE}{path}"));
+        return Ok("已开始下载安装包,请按提示完成安装".into());
+    }
+    // CLI:npm 系(缺 Node 引导)
+    let npm_pkg: Option<&str> = match id.as_str() {
+        "claude" => Some("@anthropic-ai/claude-code"),
+        "codex" => Some("@openai/codex"),
+        "gemini" => Some("@google/gemini-cli"),
+        "opencode" => Some("opencode-ai"),
+        _ => None,
+    };
+    if let Some(pkg) = npm_pkg {
+        #[cfg(target_os = "windows")]
+        let node_ok = run_quiet(Command::new("cmd").args(["/C", "node -v"]))
+            .map(|o| o.status.success()).unwrap_or(false);
+        #[cfg(not(target_os = "windows"))]
+        let node_ok = Command::new("node").arg("-v").output()
+            .map(|o| o.status.success()).unwrap_or(false);
+        if !node_ok {
+            let node_url = if win {
+                "https://cdn.npmmirror.com/binaries/node/v22.14.0/node-v22.14.0-x64.msi"
+            } else {
+                "https://cdn.npmmirror.com/binaries/node/v22.14.0/node-v22.14.0.pkg"
+            };
+            open_external(node_url);
+            return Ok("未检测到 Node,已打开 Node 安装器(装完后回来再点安装)".into());
+        }
+        let script = format!("npm install -g {pkg} --registry=https://registry.npmmirror.com");
+        run_in_terminal(&script)?;
+        return Ok(format!("已在终端执行 {pkg} 安装,完成后回来刷新状态"));
+    }
+    Err("该工具暂不支持一键安装".into())
+}
+
 #[tauri::command]
 fn launch(id: String) -> Result<(), String> {
     let spec = tools_spec().into_iter().find(|t| t.0 == id)
@@ -1123,7 +1202,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim, install_tool])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 

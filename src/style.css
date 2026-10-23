@@ -447,3 +447,17 @@ a { color: inherit; text-decoration: none; }
 .rc-copy:active { transform: scale(.94); }
 .rcfold summary .rc-copy { margin-left: auto; }
 .rcfold summary .rc-caret { margin-left: 0; }
+
+/* 工具行改为 div 后的点击区 */
+.tool-row { cursor: pointer; }
+.tool-state { cursor: pointer; }
+.tool-state.st-install { color: #d9714f; font-weight: 800; }
+/* 全局右上角复制邀请 */
+.topcopy {
+  position: absolute; top: 14px; right: 14px; z-index: 20;
+  width: 30px; height: 30px; border-radius: 9px; border: 1px solid #f0c9b8;
+  background: #fff0e9; color: #c06a4b; font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.topcopy:active { transform: scale(.93); }
+.app { position: relative; }

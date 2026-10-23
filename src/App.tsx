@@ -58,6 +58,7 @@ const openUrl = (url: string) => invoke("open_url", { url }).catch(() => {});
 // 邀请卡:默认折叠,展示邀请码 + 已邀人数 + 待结提成(可转入余额)
 function InviteCard({ say, onClaimed }: { say: (t: string) => void; onClaimed: () => Promise<void> }) {
   const [info, setInfo] = useState<InviteInfo | null>(null);
+  useEffect(() => { load(); }, []);
   const [busy, setBusy] = useState(false);
   const lastLoad = useRef(0);
   const load = async () => {
@@ -78,16 +79,8 @@ function InviteCard({ say, onClaimed }: { say: (t: string) => void; onClaimed: (
     setBusy(false);
   };
   return (
-    <details className="rcfold" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
-      <summary>邀请好友
-        {info?.aff_code && (
-          <button className="rc-copy" title="复制邀请链接" onClick={(e) => {
-            e.preventDefault(); e.stopPropagation();
-            const link = `https://binaryworld.world/register?aff=${info.aff_code}`;
-            navigator.clipboard?.writeText(link).then(() => say("邀请链接已复制 🐾"), () => say(link));
-          }}>⧉</button>
-        )}
-        <span className="rc-caret">▾</span></summary>
+    <details className="rcfold" open onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
+      <summary>邀请好友 <span className="rc-caret">▾</span></summary>
       {info === null ? <div className="keyhint">加载中…</div> : !info.aff_code ? <div className="keyhint">暂无邀请信息</div> : (
         <div className="invbox">
           <div className="invcode" onClick={() => {
@@ -112,6 +105,7 @@ function InviteCard({ say, onClaimed }: { say: (t: string) => void; onClaimed: (
 // 最近调用:默认折叠,展开时拉取(60s 节流)
 function RecentCalls({ cny }: { cny: number }) {
   const [rows, setRows] = useState<RecentCall[] | null>(null);
+  useEffect(() => { load(); }, []);
   const lastLoad = useRef(0);
   const load = async () => {
     if (Date.now() - lastLoad.current < 60_000) return;
@@ -120,7 +114,7 @@ function RecentCalls({ cny }: { cny: number }) {
     catch { setRows([]); }
   };
   return (
-    <details className="rcfold" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
+    <details className="rcfold" open onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
       <summary>最近调用 <span className="rc-caret">▾</span></summary>
       {rows === null ? <div className="keyhint">加载中…</div>
         : rows.length === 0 ? <div className="keyhint">还没有调用记录</div>
@@ -358,12 +352,15 @@ export default function App() {
   const cli = tools.filter((t) => t.kind === "Cli");
   const desktop = tools.filter((t) => t.kind === "Desktop");
 
+  const INSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "claude-desktop", "codex-desktop"]);
+  const install = async (t: Tool) => {
+    try { say(await invoke<string>("install_tool", { id: t.id })); await refresh(); }
+    catch (e) { say(`${e}`); }
+  };
   const row = (t: Tool) => (
-    <button
+    <div
       key={t.id}
       className="tool-row"
-      disabled={!t.installed}
-      onClick={() => launch(t)}
     >
       <span className="tool-ico">{ICONS[t.id] ?? "✧"}</span>
       <span className="tool-name">
@@ -374,10 +371,14 @@ export default function App() {
           </span>
         )}
       </span>
-      <span className={`tool-state ${t.installed ? "st-ok" : "st-warn"}`}>
-        {t.installed ? "启动 ↗" : "未安装"}
-      </span>
-    </button>
+      {t.installed ? (
+        <span className={`tool-state st-ok`} onClick={() => launch(t)}>启动 ↗</span>
+      ) : INSTALLABLE.has(t.id) ? (
+        <span className="tool-state st-install" onClick={() => install(t)}>安装</span>
+      ) : (
+        <span className={`tool-state st-warn`}>未安装</span>
+      )}
+    </div>
   );
 
   return (
@@ -445,8 +446,17 @@ export default function App() {
         </div>
       </div>
 
+      <button className="topcopy" title="复制邀请链接" onClick={async () => {
+        try {
+          const info = await invoke<InviteInfo>("invite_info");
+          if (!info.aff_code) { say("暂无邀请码,请先登录"); return; }
+          const link = `https://binaryworld.world/register?aff=${info.aff_code}`;
+          navigator.clipboard?.writeText(link).then(() => say("邀请链接已复制 🐾"), () => say(link));
+        } catch { say("请先登录后再复制邀请链接"); }
+      }}>⧉</button>
+
       <div className="viewtabs">
-        <button className={`tab ${view === "home" ? "on" : ""}`} onClick={() => setView("home")}>启动</button>
+        <button className={`tab ${view === "home" ? "on" : ""}`} onClick={() => { setView("home"); refresh(); }}>工具</button>
         <button className={`tab ${view === "invite" ? "on" : ""}`} onClick={() => setView("invite")}>邀请</button>
       </div>
 
@@ -460,8 +470,8 @@ export default function App() {
 
       ) : (
         <div className="listwrap">
-          <RecentCalls cny={cny} />
           <InviteCard say={say} onClaimed={refresh} />
+          <RecentCalls cny={cny} />
         </div>
       )}
 
