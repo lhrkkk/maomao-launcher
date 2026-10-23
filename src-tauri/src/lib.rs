@@ -1308,6 +1308,13 @@ async fn uninstall_tool(app: tauri::AppHandle, id: String) -> Result<String, Str
     }
 }
 
+/// Claude Code 模型映射说明用:主模型/快速模型(后台 app-config 下发)
+#[tauri::command]
+async fn claude_model_map() -> Result<serde_json::Value, String> {
+    let c = fetch_app_config();
+    Ok(serde_json::json!({ "main": c.claude_main, "small": c.claude_small }))
+}
+
 /// 查工具版本:(本机版本, 最新版)。最新版走 npm registry;curl 脚本系拿不到则 latest=None
 #[tauri::command]
 async fn tool_versions(id: String) -> Result<Option<(Option<String>, Option<String>)>, String> {
@@ -1469,7 +1476,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim, install_tool, uninstall_tool, tool_versions, usage_daily])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim, install_tool, uninstall_tool, tool_versions, usage_daily, claude_model_map])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 
