@@ -414,8 +414,7 @@ a { color: inherit; text-decoration: none; }
 .rc-usd { color: #b04a2f; font-weight: 700; }
 
 /* 邀请卡 */
-.invbox { margin-top: 8px; }
-.invcode {
+.invbox { margin-top: 8px; }.invcode {
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 17px; font-weight: 800; letter-spacing: 1.5px; color: #b04a2f;
   background: #fdeae4; border: 1px solid #f7c8b6; border-radius: 10px;
@@ -484,3 +483,23 @@ a { color: inherit; text-decoration: none; }
 }
 .topcopy:active { transform: scale(.93); }
 .app { position: relative; }
+
+/* 调用量图表(app「更多」页) */
+.uc-today { font-size: 11px; font-weight: 700; color: #857f95; margin-left: 8px; }
+.ucwrap { margin-top: 8px; }
+.uclabel { font-size: 10px; font-weight: 800; color: #a39db4; letter-spacing: .8px; margin-bottom: 3px; }
+.ucbars { display: flex; align-items: flex-end; gap: 5px; height: 74px; }
+.ucbar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; min-width: 0; }
+.ucbar i { display: block; width: 100%; max-width: 26px; border-radius: 4px 4px 2px 2px; background: linear-gradient(180deg, #ff9b7d, #f46f54); }
+.ucval { font-size: 9px; color: #6b6577; white-space: nowrap; }
+.ucday { font-size: 9px; color: #a8a3b4; white-space: nowrap; }
+/* 复制邀请按钮悬停提示 */
+.topcopy::after {
+  content: "复制邀请链接";
+  position: absolute; top: calc(100% + 7px); right: 0;
+  background: #302b47; color: #fff; font-size: 10px; font-weight: 700;
+  padding: 5px 9px; border-radius: 7px; white-space: nowrap;
+  opacity: 0; pointer-events: none; transform: translateY(-3px); transition: .15s;
+  z-index: 9999;
+}
+.topcopy:hover::after { opacity: 1; transform: none; }

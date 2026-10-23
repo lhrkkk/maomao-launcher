@@ -103,6 +103,50 @@ function InviteCard({ say, onClaimed }: { say: (t: string) => void; onClaimed: (
   );
 }
 
+// 调用量图表(近 8 天):挂载即预取,展开秒出(60s 节流)
+interface DailyPoint { day: string; calls: number; usd: number }
+interface UsageData { daily: DailyPoint[]; today_calls: number; today_usd: number }
+function UsageChart({ cny }: { cny: number }) {
+  const [data, setData] = useState<UsageData | null>(null);
+  const lastLoad = useRef(0);
+  const load = async () => {
+    if (Date.now() - lastLoad.current < 60_000) return;
+    lastLoad.current = Date.now();
+    try { setData(await invoke<UsageData>("usage_daily")); }
+    catch { setData(null); }
+  };
+  useEffect(() => { load(); }, []);
+  const chart = (pick: (d: DailyPoint) => number, fmt: (n: number) => string) => {
+    if (!data) return null;
+    const vals = data.daily.map(pick);
+    const mx = Math.max(...vals, 1);
+    return (
+      <div className="ucbars">
+        {data.daily.map((d, i) => (
+          <div key={i} className="ucbar" title={`${d.day}:${fmt(vals[i])}`}>
+            <span className="ucval">{vals[i] ? fmt(vals[i]) : ""}</span>
+            <i style={{ height: Math.max(2, Math.round(vals[i] / mx * 40)) }} />
+            <span className="ucday">{d.day.slice(3)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+  return (
+    <details className="rcfold" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
+      <summary>调用量{data && data.today_calls >= 0 ? <span className="uc-today">今日 {data.today_calls} 次 · ¥{(data.today_usd * cny).toFixed(2)}</span> : null}<span className="rc-caret">▾</span></summary>
+      {data === null ? <div className="keyhint">加载中…</div> : data.daily.length === 0 ? <div className="keyhint">暂无数据</div> : (
+        <div className="ucwrap">
+          <div className="uclabel">调用次数</div>
+          {chart((d) => d.calls, (n) => `${n}`)}
+          <div className="uclabel" style={{ marginTop: 8 }}>花费</div>
+          {chart((d) => d.usd, (n) => `¥${(n * cny).toFixed(n * cny < 10 ? 1 : 0)}`)}
+        </div>
+      )}
+    </details>
+  );
+}
+
 // 最近调用:默认折叠,展开时拉取(60s 节流)
 function RecentCalls({ cny }: { cny: number }) {
   const [rows, setRows] = useState<RecentCall[] | null>(null);
@@ -553,7 +597,7 @@ export default function App() {
         </div>
       </div>
 
-      <button className="topcopy" title="复制邀请链接" onClick={async () => {
+      <button className="topcopy" onClick={async () => {
         const copy = (code: string) => {
           const link = `https://binaryworld.world/register?aff=${code}`;
           navigator.clipboard?.writeText(link).then(() => say("邀请链接已复制 🐾"), () => say(link));
@@ -581,6 +625,7 @@ export default function App() {
       </div>
 
       <div className="listwrap" hidden={view !== "invite"}>
+        <UsageChart cny={cny} />
         <InviteCard say={say} onClaimed={refresh} />
         <RecentCalls cny={cny} />
       </div>

@@ -713,6 +713,36 @@ pub struct RecentCall {
     pub usd: f64,
 }
 
+#[derive(Serialize, Clone)]
+struct DailyPoint { day: String, calls: i64, usd: f64 }
+#[derive(Serialize, Clone)]
+struct UsageData { daily: Vec<DailyPoint>, today_calls: i64, today_usd: f64 }
+
+/// 近 8 天调用量(sk-key 鉴权),app「更多」页图表用
+#[tauri::command]
+async fn usage_daily() -> Result<UsageData, String> {
+    let resp = mm_get("/mm-admin/usage?days=8")?;
+    if resp.status() == 403 { return Err("Key 无效或已停用,请重新登录".into()); }
+    let v: serde_json::Value = resp.json().map_err(|_| "响应异常".to_string())?;
+    if !api_success(&v) { return Err(format!("获取调用量失败:{}", api_error(&v))); }
+    let daily = v.pointer("/data/daily")
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|x| DailyPoint {
+            day: x.get("day").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            calls: x.get("calls").and_then(|v| v.as_i64()).unwrap_or(0),
+            usd: x.get("usd").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        })
+        .collect();
+    Ok(UsageData {
+        daily,
+        today_calls: v.pointer("/data/today/calls").and_then(|v| v.as_i64()).unwrap_or(0),
+        today_usd: v.pointer("/data/today/usd").and_then(|v| v.as_f64()).unwrap_or(0.0),
+    })
+}
+
 #[tauri::command]
 async fn recent_calls() -> Result<Vec<RecentCall>, String> {
     let resp = mm_get("/mm-admin/log-key")?;
@@ -1394,7 +1424,7 @@ pub fn run() {
             app.deep_link().on_open_url(move |e| handle_auth_urls(&handle, e.urls()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim, install_tool, uninstall_tool, tool_versions])
+        .invoke_handler(tauri::generate_handler![get_state, save_key, login_and_setup, deep_link_setup, logout, launch, open_url, list_tokens, create_token, use_token, get_balance, takeover, recent_calls, invite_info, invite_claim, install_tool, uninstall_tool, tool_versions, usage_daily])
         .build(tauri::generate_context!())
         .expect("error while running maomao launcher");
 
