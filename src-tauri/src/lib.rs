@@ -1299,8 +1299,24 @@ async fn uninstall_tool(app: tauri::AppHandle, id: String) -> Result<String, Str
             }
             #[cfg(target_os = "windows")]
             {
-                open_external("ms-settings:appsfeatures");
-                Ok("已打开系统应用管理,在那里卸载".into())
+                // MSIX(ChatGPT/Codex)直接移除;传统安装器(Claude)调其卸载程序静默跑;都找不到才开应用列表
+                let pat = if id == "claude-desktop" { "Claude" } else { "ChatGPT|Codex" };
+                let ps = format!(
+                    "$p = Get-AppxPackage | Where-Object {{ $_.Name -match '{pat}' }} | Select-Object -First 1; \
+                     if ($p) {{ $p | Remove-AppxPackage; Write-Output 'MSIX' }} \
+                     else {{ $u = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object {{ $_.DisplayName -match '{pat}' }} | Select-Object -First 1; \
+                     if ($u -and $u.UninstallString) {{ $c = $u.UninstallString -replace '\"',''; Start-Process $c -ArgumentList '/S' -Wait; Write-Output 'UNINST' }} else {{ Write-Output 'NONE' }} }}"
+                );
+                match run_quiet(Command::new("powershell").args(["-NoProfile", "-Command", &ps])) {
+                    Ok(o) if o.status.success() => {
+                        match String::from_utf8_lossy(&o.stdout).trim() {
+                            "MSIX" => Ok("已卸载完成".into()),
+                            "UNINST" => Ok("已调用卸载程序(如弹出窗口请按提示完成)".into()),
+                            _ => { open_external("ms-settings:appsfeatures"); Ok("未找到可直接卸载的入口,已打开系统应用管理".into()) }
+                        }
+                    }
+                    _ => { open_external("ms-settings:appsfeatures"); Ok("已打开系统应用管理,在那里卸载".into()) }
+                }
             }
         }
         "grok" => {
