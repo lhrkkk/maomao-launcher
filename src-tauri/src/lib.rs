@@ -1426,29 +1426,6 @@ async fn claude_model_map() -> Result<serde_json::Value, String> {
     }))
 }
 
-#[tauri::command]
-async fn claude_model_map() -> Result<serde_json::Value, String> {
-    let c = fetch_app_config();
-    let all = fetch_models();
-    let mut groups: std::collections::BTreeMap<String, Vec<String>> = Default::default();
-    for m in all.iter().filter(|m| m.starts_with("claude-")) {
-        let g = if m.contains("opus") { "opus" }
-            else if m.contains("sonnet") { "sonnet" }
-            else if m.contains("haiku") { "haiku" }
-            else if m.contains("fable") { "fable" }
-            else { "其他" };
-        groups.entry(g.to_string()).or_default().push(m.clone());
-    }
-    if groups.is_empty() {
-        groups.entry("opus".into()).or_default().push("claude-opus-5-5".into());
-    }
-    Ok(serde_json::json!({
-        "main": c.claude_main,
-        "small": c.claude_small,
-        "groups": groups,
-    }))
-}
-
 /// 查工具版本:(本机版本, 最新版)。CLI 走 npm registry;桌面版走 desktop-versions.json 清单
 #[tauri::command]
 async fn tool_versions(id: String) -> Result<Option<(Option<String>, Option<String>)>, String> {
