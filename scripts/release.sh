@@ -24,15 +24,15 @@ if ! COREPACK_INTEGRITY_KEYS=0 pnpm tauri build --target aarch64-apple-darwin > 
 fi
 grep -E "Finished" "/tmp/macbuild-$VER.log" | head -3
 BUNDLE="src-tauri/target/aarch64-apple-darwin/release/bundle"
-APP="$BUNDLE/macos/MaoMao Token.app"
+APP=$(find "$BUNDLE/macos" -maxdepth 1 -name "*.app" | head -1)
 DMG=$(find "$BUNDLE/dmg" -name "*.dmg" | head -1)
-TAR="$BUNDLE/macos/MaoMao Token.app.tar.gz"
+TAR=$(find "$BUNDLE/macos" -maxdepth 1 -name "*.app.tar.gz" | head -1)
 TAR_SIG="$TAR.sig"
 test -f "$DMG" && test -f "$TAR" && test -f "$TAR_SIG"
 cp "$DMG" "/tmp/Maomao-Token-$VER-mac-arm64.dmg"
 cp "$TAR" "/tmp/Maomao-Token-$VER-mac-arm64.app.tar.gz"
 cp "$TAR_SIG" /tmp/maomao-mac.tar.gz.sig
-rm -rf "/Applications/MaoMao Token.app" && cp -R "$APP" /Applications/
+rm -rf "/Applications/MaoMao Token.app" "/Applications/MaoMao Power.app" && cp -R "$APP" /Applications/
 echo "MAC DONE (dmg + tar.gz + updater sig)"
 
 echo "=== windows CI ==="
