@@ -222,9 +222,10 @@ fn find_app(candidates: &[&str]) -> Option<String> {
         return Some(p.to_string_lossy().to_string());
     }
     // MSIX/Store 应用(ChatGPT=Codex 桌面版等):无别名、无 .lnk、目录被 ACL 锁,Get-StartApps 是唯一可靠探测
+    // 正则只含 candidates,防跨工具误匹配(曾把 Claude 匹配给 Codex 行)
     if let Ok(out) = run_quiet(Command::new("powershell").args(["-NoProfile", "-Command", &format!(
-        "Get-StartApps | Where-Object {{ $_.Name -match '^(ChatGPT|Codex|Claude|{})\\b|{}' }} | Select-Object -First 1 -ExpandProperty AppID",
-        candidates.join("|"), candidates.join("|")
+        "Get-StartApps | Where-Object {{ $_.Name -match '{}' }} | Select-Object -First 1 -ExpandProperty AppID",
+        candidates.join("|")
     )])) {
         if out.status.success() {
             let appid = String::from_utf8_lossy(&out.stdout).trim().to_string();
