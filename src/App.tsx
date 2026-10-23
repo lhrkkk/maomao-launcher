@@ -567,7 +567,8 @@ export default function App() {
     return false;
   };
   const upgradable = (t: Tool) => {
-    if (t.id === "grok" || t.id === "hermes") return true; // 无版本渠道,行内常显(重跑官方脚本幂等)
+    // grok/hermes 无版本渠道,升级只在 ⋯ 菜单(不常显行内)
+    if (t.id === "grok" || t.id === "hermes") return false;
     const v = verInfo[t.id];
     return !!(v?.cur && v?.latest && newer(v.latest, v.cur));
   };
