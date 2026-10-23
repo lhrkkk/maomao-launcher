@@ -1411,7 +1411,21 @@ async fn uninstall_tool(app: tauri::AppHandle, id: String) -> Result<String, Str
     }
 }
 
-/// Claude Code 模型映射说明:默认/小模型(app-config)+ 站点同名模型按 opus/sonnet/haiku/其他 分组
+/// Claude Code 模型映射说明:默认/小模型 + 列表其余为可手动切换,全部来自管理后台 app-config
+#[tauri::command]
+async fn claude_model_map() -> Result<serde_json::Value, String> {
+    let c = fetch_app_config();
+    let others: Vec<String> = c.claude.iter()
+        .filter(|m| **m != c.claude_main && **m != c.claude_small)
+        .cloned()
+        .collect();
+    Ok(serde_json::json!({
+        "main": c.claude_main,
+        "small": c.claude_small,
+        "others": others,
+    }))
+}
+
 #[tauri::command]
 async fn claude_model_map() -> Result<serde_json::Value, String> {
     let c = fetch_app_config();

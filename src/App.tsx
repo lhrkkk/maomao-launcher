@@ -533,12 +533,12 @@ export default function App() {
   const [menuPos, setMenuPos] = useState<{ id: string; top: number; left: number } | null>(null);
   const [installing, setInstalling] = useState<Set<string>>(new Set());
   // Claude Code 模型映射说明卡
-  const [mapInfo, setMapInfo] = useState<{ main: string; small: string; groups: Record<string, string[]> } | null>(null);
+  const [mapInfo, setMapInfo] = useState<{ main: string; small: string; others: string[] } | null>(null);
   const [appVer, setAppVer] = useState("");
   useEffect(() => { getVersion().then(setAppVer).catch(() => {}); }, []);
   const showMap = async () => {
     setMenuPos(null);
-    try { setMapInfo(await invoke<{ main: string; small: string; groups: Record<string, string[]> }>("claude_model_map")); }
+    try { setMapInfo(await invoke<{ main: string; small: string; others: string[] }>("claude_model_map")); }
     catch (e) { say(`${e}`); }
   };
   // 工具版本信息(启动后懒检查):{cur, latest};可升级的行内直接亮"升级"按钮
@@ -777,15 +777,10 @@ export default function App() {
           <div className="authcard" onClick={(e) => e.stopPropagation()}>
             <div className="authcard-title">Claude Code 模型映射</div>
             <div className="authcard-body">
-              {Object.entries(mapInfo.groups).map(([g, ms]) => {
-                const best = ms.reduce((a, b) => (newer(b, a) ? b : a), ms[0] ?? "");
-                return (
-                  <div key={g} className="maprow">选择 <b>{g}</b> → 使用 <code>{best}</code></div>
-                );
-              })}
-              <div className="maprow">默认(启动即用)→ <code>{mapInfo.main}</code></div>
+              <div className="maprow">默认模型 → <code>{mapInfo.main}</code></div>
               <div className="maprow">后台小模型 → <code>{mapInfo.small}</code></div>
-              <div className="keyhint" style={{ marginTop: 6 }}>站点同名直通:每个名字对应站点同名的模型,以上为各组最新版</div>
+              <div className="maprow">可手动切换(/model)→ {mapInfo.others.length ? mapInfo.others.map((m) => <code key={m} style={{ marginRight: 6 }}>{m}</code>) : "—"}</div>
+              <div className="keyhint" style={{ marginTop: 6 }}>由管理后台「客户端模型配置」下发,改动后自动生效</div>
             </div>
             <div className="authcard-acts">
               <button className="btn btn-save" onClick={() => setMapInfo(null)}>知道了</button>
