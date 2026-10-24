@@ -540,7 +540,8 @@ export default function App() {
   const cli = tools.filter((t) => t.kind === "Cli");
   const desktop = tools.filter((t) => t.kind === "Desktop");
 
-  const INSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi", "claude-desktop", "codex-desktop"]);
+  // claude-desktop 暂停安装:自托管包误为 "Claude Science"(非官方 Claude),待换正确包后恢复
+  const INSTALLABLE = new Set(["codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi", "codex-desktop"]);
   // ⋯ 菜单对全部已安装工具可用(桌面版卸载=定位/Finder/系统设置)
   const UNINSTALLABLE = new Set(["claude", "codex", "gemini", "opencode", "grok", "openclaw", "hermes", "pi", "claude-desktop", "codex-desktop"]);
   const [menuPos, setMenuPos] = useState<{ id: string; top: number; left: number } | null>(null);

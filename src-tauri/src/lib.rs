@@ -1205,14 +1205,21 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
             let verb = if upgrading { "升级" } else { "安装" };
             // 全量日志:%TEMP%/maomao-install.log(时间戳为 epoch 秒)
             let logf = std::env::temp_dir().join("maomao-install.log");
+            let appver = app.package_info().version.to_string();
             let log = |msg: &str| {
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-                if !logf.exists() {
-                    // UTF-8 BOM:否则 Windows 记事本按 GBK 打开中文全是乱码
+                // 旧日志无 BOM(乱码根源):发现即补写 BOM 迁移
+                if logf.exists() {
+                    if let Ok(head) = fs::read(&logf) {
+                        if head.len() >= 3 && head[..3] != [0xEF, 0xBB, 0xBF] {
+                            let _ = fs::write(&logf, [0xEFu8, 0xBB, 0xBF].iter().copied().chain(head.iter().copied()).collect::<Vec<u8>>());
+                        }
+                    }
+                } else {
                     let _ = fs::write(&logf, "\u{FEFF}");
                 }
+                let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
                 let _ = std::fs::OpenOptions::new().create(true).append(true).open(&logf)
-                    .and_then(|mut f| f.write_all(format!("[{ts}] {idc} {msg}\n").as_bytes()));
+                    .and_then(|mut f| f.write_all(format!("[{appver} {now}] {idc} {msg}\n").as_bytes()));
             };
             let fail = |t: String| {
                 log(&t);
