@@ -1294,12 +1294,12 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                             else if out.starts_with("OK") { Ok(()) }
                             else if out.starts_with("ERR") {
                                 if out.contains("0x80073D28") {
-                                    // 官方 Codex 包需要管理员权限:弹 UAC 提权重装,用户点"是"即完成
-                                    log("0x80073D28 needs admin: launching elevated install");
-                                    let elevate = format!("Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -Command Add-AppxPackage -Path \"{}\" -ForceApplicationShutdown'", dest.to_string_lossy());
-                                    let _ = Command::new("powershell").args(["-NoProfile", "-Command", &elevate]).spawn();
-                                    let _ = fs::remove_file(&dest);
-                                    let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "msg": "已弹出管理员授权窗口,请点\"是\"完成安装(完成后开始菜单即可看到)", "tail": "", "verb": verb }));
+                                    // 需要管理员权限:直接打开 msix 走系统"应用安装器"(原生 UI 自动处理提权)
+                                    log("0x80073D28 needs admin: opening msix via App Installer");
+                                    let _ = Command::new("cmd")
+                                        .raw_arg(format!("/C start \"\" \"{}\"", dest.to_string_lossy()))
+                                        .spawn();
+                                    let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "msg": "已打开系统应用安装器,请点\"安装\"按钮完成(完成后开始菜单即可看到)", "tail": "", "verb": verb }));
                                     return;
                                 }
                                 let detail: String = out.lines().skip(1).collect::<Vec<_>>().join(" | ");
