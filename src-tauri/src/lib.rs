@@ -1268,11 +1268,23 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
             let install_res: Result<(), String> = {
                 use std::os::windows::process::CommandExt;
                 if ext == "msix" {
+                    // 装前查重(同/更高版本会 DeploymentError)、强制关停运行实例、失败抓 AppxLog 明细
+                    let ps = format!(
+                        r#"$ex = Get-AppxPackage | Where-Object {{ $_.Name -match 'ChatGPT|Codex' }} | Select-Object -First 1; if ($ex) {{ Write-Output ('ALREADY ' + $ex.Version); exit }}; try {{ Add-AppxPackage -Path '{}' -ForceApplicationShutdown -ErrorAction Stop; Write-Output 'OK' }} catch {{ Write-Output 'ERR'; try {{ Get-AppxLog | Select-Object -Last 3 | ForEach-Object {{ Write-Output ('LOG: ' + $_.Message) }} }} catch {{ Write-Output $_.Exception.Message }}; exit 1 }}"#,
+                        dest.to_string_lossy()
+                    );
                     let mut c = Command::new("powershell");
-                    c.args(["-NoProfile", "-Command", &format!("Add-AppxPackage -Path '{}'", dest.to_string_lossy())]);
+                    c.args(["-NoProfile", "-Command", &ps]);
                     match run_quiet(&mut c) {
-                        Ok(o) if o.status.success() => Ok(()),
-                        Ok(o) => Err(format!("安装失败:{}", String::from_utf8_lossy(&o.stderr))),
+                        Ok(o) => {
+                            let out = String::from_utf8_lossy(&o.stdout).to_string();
+                            if out.starts_with("ALREADY") { Ok(()) }
+                            else if out.starts_with("OK") { Ok(()) }
+                            else if out.starts_with("ERR") {
+                                let detail: String = out.lines().skip(1).collect::<Vec<_>>().join(" | ");
+                                Err(format!("MSIX 部署失败:{}", if detail.is_empty() { String::from_utf8_lossy(&o.stderr).to_string() } else { detail }))
+                            } else { Err(format!("安装输出异常:{}", out)) }
+                        }
                         Err(e) => Err(format!("安装失败:{e}")),
                     }
                 } else {
