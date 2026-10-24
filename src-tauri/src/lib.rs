@@ -1207,6 +1207,10 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
             let logf = std::env::temp_dir().join("maomao-install.log");
             let log = |msg: &str| {
                 let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                if !logf.exists() {
+                    // UTF-8 BOM:否则 Windows 记事本按 GBK 打开中文全是乱码
+                    let _ = fs::write(&logf, "\u{FEFF}");
+                }
                 let _ = std::fs::OpenOptions::new().create(true).append(true).open(&logf)
                     .and_then(|mut f| f.write_all(format!("[{ts}] {idc} {msg}\n").as_bytes()));
             };
