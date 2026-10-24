@@ -1294,7 +1294,7 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                     c.raw_arg(format!("/C start /wait {q}{q} {q}{}{q} /S", dest.to_string_lossy()));
                     match run_quiet(&mut c) {
                         Ok(o) if o.status.success() => Ok(()),
-                        Ok(o) => Err(format!("安装失败:{}", String::from_utf8_lossy(&o.stderr))),
+                        Ok(o) => Err(format!("静默安装失败(exit {:?});安装包已保留,可双击手动安装", o.status.code())),
                         Err(e) => Err(format!("安装失败:{e}")),
                     }
                 }
