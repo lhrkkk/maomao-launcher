@@ -1584,21 +1584,17 @@ async fn launch(id: String) -> Result<(), String> {
             #[cfg(target_os = "windows")]
             let out = {
                 use std::os::windows::process::CommandExt;
-                let mut c = if app.starts_with("shell:AppsFolder") {
-                    // MSIX/Store 应用:explorer 按 AppID 启动
-                    let mut c = Command::new("explorer");
-                    c.arg(&app);
-                    c
-                } else {
-                    let mut c = Command::new("cmd");
-                    c.raw_arg(format!("/C start \"\" \"{app}\""));
-                    c
-                };
-                run_quiet(&mut c)
-            }.map_err(|e| format!("启动失败:{e}"))?;
-            if !out.status.success() {
-                return Err(format!("启动 {app} 失败:{}", String::from_utf8_lossy(&out.stderr)));
-            }
+                if app.starts_with("shell:AppsFolder") {
+                    // MSIX/Store:explorer 把请求转给已运行的实例后退出码常非 0,不能按 status 判成败
+                    let _ = Command::new("explorer").arg(&app).spawn();
+                    return Ok(());
+                }
+                let mut c = Command::new("cmd");
+                c.raw_arg(format!("/C start \"\" \"{app}\""));
+                let out = run_quiet(&mut c).map_err(|e| format!("启动失败:{e}"))?;
+                if !out.status.success() {
+                    return Err(format!("启动 {app} 失败:{}", String::from_utf8_lossy(&out.stderr)));
+                }
             Ok(())
         }
         ToolKind::Cli => {
