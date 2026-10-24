@@ -1286,6 +1286,13 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                             if out.starts_with("ALREADY") { Ok(()) }
                             else if out.starts_with("OK") { Ok(()) }
                             else if out.starts_with("ERR") {
+                                if out.contains("0x80073D28") {
+                                    // 官方 Codex 包需要管理员权限:弹 UAC 提权重装,用户点"是"即完成
+                                    log("0x80073D28 needs admin: launching elevated install");
+                                    let elevate = format!("Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -Command Add-AppxPackage -Path \"{}\" -ForceApplicationShutdown'", dest.to_string_lossy());
+                                    let _ = Command::new("powershell").args(["-NoProfile", "-Command", &elevate]).spawn();
+                                    return Ok(serde_json::Value::Null); // 哨兵:UAC 已弹
+                                }
                                 let detail: String = out.lines().skip(1).collect::<Vec<_>>().join(" | ");
                                 Err(format!("MSIX 部署失败:{}", if detail.is_empty() { String::from_utf8_lossy(&o.stderr).to_string() } else { detail }))
                             } else { Err(format!("安装输出异常:{}", out)) }
@@ -1303,8 +1310,29 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                     }
                 }
             };
+            if install_res == Ok(serde_json::Value::Null) {
+                // UAC 哨兵:提权安装已弹出,等待用户授权
+                log("UAC elevated install launched");
+                let _ = fs::remove_file(&dest);
+                let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "msg": "已弹出管理员授权窗口,请点\"是\"完成安装(完成后开始菜单即可看到)", "tail": "", "verb": verb }));
+                return;
+            }
             match install_res {
                 Ok(()) => {
+                    // exe 静默安装器可能秒退未真装:验证产物落地(最多 24s)
+                    #[cfg(target_os = "windows")]
+                    if ext == "exe" {
+                        let mut landed = false;
+                        for _ in 0..12 {
+                            if let Ok(l) = std::env::var("LOCALAPPDATA") {
+                                if PathBuf::from(&l).join("AnthropicClaude").join("claude.exe").exists() { landed = true; break; }
+                            }
+                            std::thread::sleep(std::time::Duration::from_secs(2));
+                        }
+                        if !landed {
+                            return fail("静默安装未生效(未检测到应用),安装包已保留,请双击手动完成安装".into());
+                        }
+                    }
                     log("install ok");
                     let _ = fs::remove_file(&dest); // 成功才清理,失败保留安装包便于手动安装/排查
                     let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "tail": "", "verb": verb }));
