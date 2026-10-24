@@ -1233,9 +1233,10 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                         buf.extend_from_slice(&chunk[..n]);
                         if total > 0 {
                             let pct = (buf.len() as f64 / total as f64 * 100.0) as i64;
-                            if pct >= last_pct + 5 {
+                            if pct > last_pct {
                                 last_pct = pct;
-                                let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "pct": pct, "progress": true, "tail": "", "verb": verb }));
+                                let mb = format!("{}/{}", buf.len() / 1048576, total / 1048576);
+                                let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "pct": pct, "mb": mb, "progress": true, "tail": "", "verb": verb }));
                             }
                         }
                     }

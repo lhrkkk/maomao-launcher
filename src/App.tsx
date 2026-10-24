@@ -401,9 +401,9 @@ export default function App() {
         }));
         unsubs.push(await listen<string>("mm-auth-error", (e) => say(e.payload)));
         // 后台静默安装/卸载结果(Rust 线程跑完 emit)
-        unsubs.push(await listen<{ id: string; ok: boolean; tail: string; verb?: string; pct?: number; progress?: boolean }>("mm-install", (e) => {
+        unsubs.push(await listen<{ id: string; ok: boolean; tail: string; verb?: string; pct?: number; mb?: string; progress?: boolean }>("mm-install", (e) => {
           const verb = e.payload.verb || "安装/升级";
-          if (e.payload.progress) { say(`下载中 ${e.payload.pct ?? 0}%…`); return; } // 桌面版下载进度,只更新提示
+          if (e.payload.progress) { say(`下载中 ${e.payload.pct ?? 0}%${e.payload.mb ? ` · ${e.payload.mb}MB` : ""}`); return; } // 桌面版下载进度,只更新提示
           setInstalling((s) => { const n = new Set(s); n.delete(e.payload.id); return n; });
           if (e.payload.ok) {
             say(`${verb}完成 🐾`);
