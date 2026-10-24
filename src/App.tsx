@@ -473,16 +473,25 @@ export default function App() {
     } catch { if (!silent) say("检查更新失败,请稍后再试"); }
   };
   useEffect(() => { checkUpdate(); }, []);
-  // 自动推送更新:检测到新版本立即下载安装,完成自动重启(失败自动重试至多 2 次,之后可手动点重试)
+  // 自动推送更新:启动检测到→下载装完自动重启;运行中每 30 分钟检测→后台下载,就绪后由用户重启
   useEffect(() => {
-    if (upd && updPct < 0 && updFails.current < 2) applyUpdate();
+    if (upd && updPct < 0 && updFails.current < 2) applyUpdate(!periodicRef.current);
   }, [upd, updPct]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      periodicRef.current = true;
+      checkUpdate().finally(() => { setTimeout(() => { periodicRef.current = false; }, 100); });
+    }, 30 * 60_000);
+    return () => clearInterval(t);
+  }, []);
   const dlTotal = useRef(0);
   const dlGot = useRef(0);
   const updFails = useRef(0);
-  const applyUpdate = async (manual = false) => {
+  const updAuto = useRef(true);
+  const periodicRef = useRef(false);
+  const applyUpdate = async (autoRelaunch = true) => {
     if (!upd) return;
-    if (!manual) updFails.current += 0; // 自动路径由 effect 限量,这里仅手动时无条件
+    updAuto.current = autoRelaunch;
     setUpdPct(0);
     dlTotal.current = 0;
     dlGot.current = 0;
@@ -497,11 +506,14 @@ export default function App() {
           setUpdPct(t ? Math.max(1, Math.min(99, Math.round((dlGot.current / t) * 99))) : 1);
         } else if (ev.event === "Finished") setUpdPct(100);
       });
-      say("更新完成,即将重启…");
-      await new Promise((r) => setTimeout(r, 2500));
-      await relaunch();
+      if (autoRelaunch) {
+        say("更新完成,即将重启…");
+        await new Promise((r) => setTimeout(r, 2500));
+        await relaunch();
+      }
+      // 周期推送:保持 updPct=100,更新条显示「重启完成更新」,重启时机由用户定
     } catch (e) {
-      if (!manual) updFails.current += 1;
+      if (!autoRelaunch) updFails.current += 1;
       setUpdPct(-1);
       say(`更新失败:${e}`);
     }
@@ -672,7 +684,9 @@ export default function App() {
                 ? <button className="btn krow-use" onClick={applyUpdate}>立即更新</button>
                 : (
                   <span className="upd-act">
-                    <span className="upd-pct">{updPct >= 100 ? "即将重启…" : `下载中 ${updPct}%`}</span>
+                    {updPct >= 100 && !updAuto.current
+                      ? <a className="upd-pct upd-ready" onClick={() => relaunch()}>✓ 更新已就绪,点此重启</a>
+                      : <span className="upd-pct">{updPct >= 100 ? "即将重启…" : `下载中 ${updPct}%`}</span>}
                     {updPct < 100 && <a className="upd-retry" onClick={applyUpdate}>重试</a>}
                   </span>
                 )}
