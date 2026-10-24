@@ -1582,7 +1582,7 @@ async fn launch(id: String) -> Result<(), String> {
             let out = Command::new("open").args(["-a", app.as_str()]).output()
                 .map_err(|e| format!("启动失败:{e}"))?;
             #[cfg(target_os = "windows")]
-            let out = {
+            {
                 use std::os::windows::process::CommandExt;
                 if app.starts_with("shell:AppsFolder") {
                     // MSIX/Store:explorer 把请求转给已运行的实例后退出码常非 0,不能按 status 判成败
@@ -1595,6 +1595,9 @@ async fn launch(id: String) -> Result<(), String> {
                 if !out.status.success() {
                     return Err(format!("启动 {app} 失败:{}", String::from_utf8_lossy(&out.stderr)));
                 }
+                Ok(())
+            }
+            #[allow(unreachable_code)]
             Ok(())
         }
         ToolKind::Cli => {
