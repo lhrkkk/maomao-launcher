@@ -1200,9 +1200,18 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
         let idc = id.clone();
         std::thread::spawn(move || {
             use std::io::Read;
+            use std::io::Write as _;
             use tauri::Emitter;
             let verb = if upgrading { "升级" } else { "安装" };
+            // 全量日志:%TEMP%/maomao-install.log(时间戳为 epoch 秒)
+            let logf = std::env::temp_dir().join("maomao-install.log");
+            let log = |msg: &str| {
+                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                let _ = std::fs::OpenOptions::new().create(true).append(true).open(&logf)
+                    .and_then(|mut f| f.write_all(format!("[{ts}] {idc} {msg}\n").as_bytes()));
+            };
             let fail = |t: String| {
+                log(&t);
                 let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": false, "tail": t, "verb": verb }));
             };
             let client = match http_client() { Ok(c) => c, Err(e) => return fail(format!("网络初始化失败:{e}")) };
@@ -1234,6 +1243,7 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                 }
             }
             if buf.len() < 1024 { return fail("下载内容异常(过小)".into()); }
+            log(&format!("downloaded {} bytes -> {}", buf.len(), dest.display()));
             if let Err(e) = fs::write(&dest, &buf) { return fail(format!("写入临时文件失败:{e}")); }
             drop(buf);
             #[cfg(target_os = "macos")]
@@ -1276,10 +1286,13 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                     }
                 }
             };
-            let _ = fs::remove_file(&dest);
             match install_res {
-                Ok(()) => { let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "tail": "", "verb": verb })); }
-                Err(e) => fail(format!("{verb}失败:{e}")),
+                Ok(()) => {
+                    log("install ok");
+                    let _ = fs::remove_file(&dest); // 成功才清理,失败保留安装包便于手动安装/排查
+                    let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "tail": "", "verb": verb }));
+                }
+                Err(e) => fail(format!("{verb}失败:{e}(安装包已保留:{})", dest.display())),
             }
         });
         return Ok(format!("正在后台下载并自动{verb},完成后自动刷新"));
