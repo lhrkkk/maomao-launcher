@@ -1277,67 +1277,24 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                 Ok(())
             })();
             #[cfg(target_os = "windows")]
-            let install_res: Result<(), String> = {
+            {
                 use std::os::windows::process::CommandExt;
                 if ext == "msix" {
-                    // 装前查重(同/更高版本会 DeploymentError)、强制关停运行实例、失败抓 AppxLog 明细
-                    let ps = format!(
-                        r#"$ex = Get-AppxPackage | Where-Object {{ $_.Name -match 'ChatGPT|Codex' }} | Select-Object -First 1; if ($ex) {{ Write-Output ('ALREADY ' + $ex.Version); exit }}; try {{ Add-AppxPackage -Path '{}' -ForceApplicationShutdown -ErrorAction Stop; Write-Output 'OK' }} catch {{ Write-Output 'ERR'; try {{ Get-AppxLog | Select-Object -Last 3 | ForEach-Object {{ Write-Output ('LOG: ' + $_.Message) }} }} catch {{ Write-Output $_.Exception.Message }}; exit 1 }}"#,
-                        dest.to_string_lossy()
-                    );
-                    let mut c = Command::new("powershell");
-                    c.args(["-NoProfile", "-Command", &ps]);
-                    match run_quiet(&mut c) {
-                        Ok(o) => {
-                            let out = String::from_utf8_lossy(&o.stdout).to_string();
-                            if out.starts_with("ALREADY") { Ok(()) }
-                            else if out.starts_with("OK") { Ok(()) }
-                            else if out.starts_with("ERR") {
-                                if out.contains("0x80073D28") {
-                                    // 需要管理员权限:直接打开 msix 走系统"应用安装器"(原生 UI 自动处理提权)
-                                    log("0x80073D28 needs admin: opening msix via App Installer");
-                                    let _ = Command::new("cmd")
-                                        .raw_arg(format!("/C start \"\" \"{}\"", dest.to_string_lossy()))
-                                        .spawn();
-                                    let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "msg": "已打开系统应用安装器,请点\"安装\"按钮完成(完成后开始菜单即可看到)", "tail": "", "verb": verb }));
-                                    return;
-                                }
-                                let detail: String = out.lines().skip(1).collect::<Vec<_>>().join(" | ");
-                                Err(format!("MSIX 部署失败:{}", if detail.is_empty() { String::from_utf8_lossy(&o.stderr).to_string() } else { detail }))
-                            } else { Err(format!("安装输出异常:{}", out)) }
-                        }
-                        Err(e) => Err(format!("安装失败:{e}")),
-                    }
-                } else {
-                    // 弹起官方安装向导让用户操作(静默 /S 曾出现假成功);安装包暂留,装完可手删
-                    let _ = Command::new("cmd")
-                        .raw_arg(format!("/C start \"\" \"{}\"", dest.to_string_lossy()))
-                        .spawn();
-                    let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "msg": "已打开安装向导,请按提示完成安装", "tail": "", "verb": verb }));
+                    // 官方 Codex 包必须管理员安装(实测普通权限 0x80073D28)。
+                    // 一次 UAC 完成:提权部署 + 以管理员启动首启设置,全程自动无需操作。
+                    let inner = "Add-AppxPackage -Path '{p}' -ForceApplicationShutdown; Start-Sleep 2; $pkg = Get-AppxPackage OpenAI.Codex; if ($pkg) {{ $exe = Get-ChildItem (Join-Path $pkg.InstallLocation '*.exe') -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName; if ($exe) {{ Start-Process $exe }} }}";
+                    let outer = format!("Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-Command','{}'", inner);
+                    log("msix needs admin: launching one-shot elevated install+setup");
+                    let _ = Command::new("powershell").args(["-NoProfile", "-Command", &outer]).spawn();
+                    let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "msg": "已弹出管理员授权窗口,请点\"是\"——窗口会自动完成安装并进入首次设置,全部自动无需操作", "tail": "", "verb": verb }));
                     return;
                 }
-            };
-            match install_res {
-                Ok(()) => {
-                    // exe 静默安装器可能秒退未真装:验证产物落地(最多 24s)
-                    #[cfg(target_os = "windows")]
-                    if ext == "exe" {
-                        let mut landed = false;
-                        for _ in 0..12 {
-                            if let Ok(l) = std::env::var("LOCALAPPDATA") {
-                                if PathBuf::from(&l).join("AnthropicClaude").join("claude.exe").exists() { landed = true; break; }
-                            }
-                            std::thread::sleep(std::time::Duration::from_secs(2));
-                        }
-                        if !landed {
-                            return fail("静默安装未生效(未检测到应用),安装包已保留,请双击手动完成安装".into());
-                        }
-                    }
-                    log("install ok");
-                    let _ = fs::remove_file(&dest); // 成功才清理,失败保留安装包便于手动安装/排查
-                    let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "tail": "", "verb": verb }));
-                }
-                Err(e) => fail(format!("{verb}失败:{e}(安装包已保留:{})", dest.display())),
+                // exe(Claude 官方向导):弹起让用户操作;安装包暂留
+                let _ = Command::new("cmd")
+                    .raw_arg(format!("/C start \"\" \"{}\"", dest.to_string_lossy()))
+                    .spawn();
+                let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "msg": "已打开安装向导,请按提示完成安装", "tail": "", "verb": verb }));
+                return;
             }
         });
         return Ok(format!("正在后台下载并自动{verb},完成后自动刷新"));
