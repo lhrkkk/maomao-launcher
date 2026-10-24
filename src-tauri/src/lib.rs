@@ -1302,14 +1302,12 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                         Err(e) => Err(format!("安装失败:{e}")),
                     }
                 } else {
-                    let mut c = Command::new("cmd");
-                    let q = "\"";
-                    c.raw_arg(format!("/C start /wait {q}{q} {q}{}{q} /S", dest.to_string_lossy()));
-                    match run_quiet(&mut c) {
-                        Ok(o) if o.status.success() => Ok(()),
-                        Ok(o) => Err(format!("静默安装失败(exit {:?});安装包已保留,可双击手动安装", o.status.code())),
-                        Err(e) => Err(format!("安装失败:{e}")),
-                    }
+                    // 弹起官方安装向导让用户操作(静默 /S 曾出现假成功);安装包暂留,装完可手删
+                    let _ = Command::new("cmd")
+                        .raw_arg(format!("/C start \"\" \"{}\"", dest.to_string_lossy()))
+                        .spawn();
+                    let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "msg": "已打开安装向导,请按提示完成安装", "tail": "", "verb": verb }));
+                    return;
                 }
             };
             match install_res {
