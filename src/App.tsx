@@ -475,20 +475,25 @@ export default function App() {
   useEffect(() => { checkUpdate(); }, []);
   // 自动推送更新:启动检测到→下载装完自动重启;运行中每 30 分钟检测→后台下载,就绪后由用户重启
   useEffect(() => {
-    if (upd && updPct < 0 && updFails.current < 2) applyUpdate(!periodicRef.current);
+    if (upd && updPct < 0 && updFails.current < 2) applyUpdate(true);
   }, [upd, updPct]);
+  // 服务端主动推送:SSE 长连接(不轮询)。管理后台点「推送更新」后,在线客户端秒级收到并全自动更新
   useEffect(() => {
-    const t = setInterval(() => {
-      periodicRef.current = true;
-      checkUpdate().finally(() => { setTimeout(() => { periodicRef.current = false; }, 100); });
-    }, 30 * 60_000);
-    return () => clearInterval(t);
-  }, []);
+    if (!appVer) return;
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource("https://binaryworld.world/mm-admin/update-notify");
+      es.addEventListener("update", (ev) => {
+        const ver = String((ev as MessageEvent).data ?? "").trim();
+        if (ver && ver !== appVer) checkUpdate();
+      });
+    } catch {}
+    return () => { es?.close(); };
+  }, [appVer]);
   const dlTotal = useRef(0);
   const dlGot = useRef(0);
   const updFails = useRef(0);
   const updAuto = useRef(true);
-  const periodicRef = useRef(false);
   const applyUpdate = async (autoRelaunch = true) => {
     if (!upd) return;
     updAuto.current = autoRelaunch;
