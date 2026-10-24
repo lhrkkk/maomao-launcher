@@ -473,10 +473,16 @@ export default function App() {
     } catch { if (!silent) say("检查更新失败,请稍后再试"); }
   };
   useEffect(() => { checkUpdate(); }, []);
+  // 自动推送更新:检测到新版本立即下载安装,完成自动重启(失败自动重试至多 2 次,之后可手动点重试)
+  useEffect(() => {
+    if (upd && updPct < 0 && updFails.current < 2) applyUpdate();
+  }, [upd, updPct]);
   const dlTotal = useRef(0);
   const dlGot = useRef(0);
-  const applyUpdate = async () => {
+  const updFails = useRef(0);
+  const applyUpdate = async (manual = false) => {
     if (!upd) return;
+    if (!manual) updFails.current += 0; // 自动路径由 effect 限量,这里仅手动时无条件
     setUpdPct(0);
     dlTotal.current = 0;
     dlGot.current = 0;
@@ -491,8 +497,14 @@ export default function App() {
           setUpdPct(t ? Math.max(1, Math.min(99, Math.round((dlGot.current / t) * 99))) : 1);
         } else if (ev.event === "Finished") setUpdPct(100);
       });
+      say("更新完成,即将重启…");
+      await new Promise((r) => setTimeout(r, 2500));
       await relaunch();
-    } catch (e) { setUpdPct(-1); say(`更新失败:${e}`); }
+    } catch (e) {
+      if (!manual) updFails.current += 1;
+      setUpdPct(-1);
+      say(`更新失败:${e}`);
+    }
   };
 
   const confirmAuth = async () => {
@@ -659,7 +671,7 @@ export default function App() {
                 ? <button className="btn krow-use" onClick={applyUpdate}>立即更新</button>
                 : (
                   <span className="upd-act">
-                    <span className="upd-pct">{updPct >= 100 ? "安装中…" : `下载中 ${updPct}%`}</span>
+                    <span className="upd-pct">{updPct >= 100 ? "即将重启…" : `自动更新 ${updPct}%`}</span>
                     {updPct < 100 && <a className="upd-retry" onClick={applyUpdate}>重试</a>}
                   </span>
                 )}
