@@ -334,6 +334,7 @@ pub struct AppState {
     pub tools: Vec<ToolInfo>,
     pub login: Option<LoginInfo>,
     pub takeover: bool,
+    pub channel: String,
 }
 
 #[tauri::command]
@@ -366,6 +367,9 @@ async fn get_state() -> AppState {
         takeover: read_json(&state_path().unwrap_or_default())
             .and_then(|v| v.get("takeover").and_then(|x| x.as_bool()))
             .unwrap_or(true),
+        channel: read_json(&state_path().unwrap_or_default())
+            .and_then(|v| v.get("channel").and_then(|x| x.as_str()).map(|x| x.to_string()))
+            .unwrap_or_else(|| "stable".into()),
     }
 }
 

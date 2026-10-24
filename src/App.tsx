@@ -478,6 +478,8 @@ export default function App() {
     if (upd && updPct < 0 && updFails.current < 2) applyUpdate(true);
   }, [upd, updPct]);
   // 服务端主动推送:SSE 长连接(不轮询)。管理后台点「推送更新」后,在线客户端秒级收到并全自动更新
+  const [appVer, setAppVer] = useState("");
+  useEffect(() => { getVersion().then(setAppVer).catch(() => {}); }, []);
   useEffect(() => {
     if (!appVer) return;
     let es: EventSource | null = null;
@@ -565,8 +567,7 @@ export default function App() {
   const [installing, setInstalling] = useState<Set<string>>(new Set());
   // Claude Code 模型映射说明卡
   const [mapInfo, setMapInfo] = useState<{ main: string; small: string; others: string[] } | null>(null);
-  const [appVer, setAppVer] = useState("");
-  useEffect(() => { getVersion().then(setAppVer).catch(() => {}); }, []);
+
   const showMap = async () => {
     setMenuPos(null);
     try { setMapInfo(await invoke<{ main: string; small: string; others: string[] }>("claude_model_map")); }
@@ -686,13 +687,13 @@ export default function App() {
             <div className="updrow">
               <span className="upd-text">🎉 新版本 v{upd.version}</span>
               {updPct < 0
-                ? <button className="btn krow-use" onClick={applyUpdate}>立即更新</button>
+                ? <button className="btn krow-use" onClick={() => applyUpdate(true)}>立即更新</button>
                 : (
                   <span className="upd-act">
                     {updPct >= 100 && !updAuto.current
                       ? <a className="upd-pct upd-ready" onClick={() => relaunch()}>✓ 更新已就绪,点此重启</a>
                       : <span className="upd-pct">{updPct >= 100 ? "即将重启…" : `下载中 ${updPct}%`}</span>}
-                    {updPct < 100 && <a className="upd-retry" onClick={applyUpdate}>重试</a>}
+                    {updPct < 100 && <a className="upd-retry" onClick={() => applyUpdate(true)}>重试</a>}
                   </span>
                 )}
             </div>

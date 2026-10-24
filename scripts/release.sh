@@ -139,4 +139,7 @@ git add -A
 git diff --cached --quiet || git commit -qm "release: v$VER 页面链接与更新清单" 
 git push -q origin master || true
 EOS
+# beta 渠道即时推送(测试设备秒级收到;stable 由管理后台手动推)
+curl -s -X POST https://binaryworld.world/mm-admin/update-push-beta -H "Content-Type: application/json" -d "{\"ver\":\"$VER\"}" >/dev/null && echo "beta pushed: $VER" || true
+
 echo "RELEASE-$VER-DONE"
