@@ -59,8 +59,16 @@ echo "MAC DONE (dmg + tar.gz + updater sig, versions verified: $TARVER/$DMGVER)"
 fi
 
 echo "=== windows CI ==="
-sleep 15
-RID=$(gh run list --workflow=build-windows.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+# 按 HEAD SHA 匹配并轮询等待新 run(取最新会绑到上一个版本的旧 run,push 后 run 创建有延迟)
+HEAD_SHA=$(git rev-parse HEAD)
+RID=""
+for i in $(seq 1 18); do
+  RID=$(gh run list --workflow=build-windows.yml --limit 5 --json databaseId,headSha --jq ".[] | select(.headSha==\"$HEAD_SHA\") | .databaseId" | head -1)
+  [ -n "$RID" ] && break
+  echo "waiting for CI run of $HEAD_SHA... ($i)"
+  sleep 10
+done
+[ -n "$RID" ] || { echo "CI RUN NOT FOUND for $HEAD_SHA"; exit 1; }
 echo "run $RID"
 if ! gh run watch "$RID" --exit-status >/dev/null 2>&1; then
   echo "CI FAILED"; gh run view "$RID" --log-failed 2>&1 | grep -iE "error" | head -20; exit 1
