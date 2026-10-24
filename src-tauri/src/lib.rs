@@ -1291,7 +1291,9 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                                     log("0x80073D28 needs admin: launching elevated install");
                                     let elevate = format!("Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -Command Add-AppxPackage -Path \"{}\" -ForceApplicationShutdown'", dest.to_string_lossy());
                                     let _ = Command::new("powershell").args(["-NoProfile", "-Command", &elevate]).spawn();
-                                    return Ok(serde_json::Value::Null); // 哨兵:UAC 已弹
+                                    let _ = fs::remove_file(&dest);
+                                    let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "msg": "已弹出管理员授权窗口,请点\"是\"完成安装(完成后开始菜单即可看到)", "tail": "", "verb": verb }));
+                                    return;
                                 }
                                 let detail: String = out.lines().skip(1).collect::<Vec<_>>().join(" | ");
                                 Err(format!("MSIX 部署失败:{}", if detail.is_empty() { String::from_utf8_lossy(&o.stderr).to_string() } else { detail }))
@@ -1310,13 +1312,6 @@ async fn install_tool(app: tauri::AppHandle, id: String, upgrade: Option<bool>) 
                     }
                 }
             };
-            if install_res == Ok(serde_json::Value::Null) {
-                // UAC 哨兵:提权安装已弹出,等待用户授权
-                log("UAC elevated install launched");
-                let _ = fs::remove_file(&dest);
-                let _ = app.emit("mm-install", serde_json::json!({ "id": idc, "ok": true, "msg": "已弹出管理员授权窗口,请点\"是\"完成安装(完成后开始菜单即可看到)", "tail": "", "verb": verb }));
-                return;
-            }
             match install_res {
                 Ok(()) => {
                     // exe 静默安装器可能秒退未真装:验证产物落地(最多 24s)
