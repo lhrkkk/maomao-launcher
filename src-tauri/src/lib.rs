@@ -1608,10 +1608,12 @@ async fn launch(id: String) -> Result<(), String> {
                 if !out.status.success() {
                     return Err(format!("启动 {app} 失败:{}", String::from_utf8_lossy(&out.stderr)));
                 }
-                Ok(())
+                Ok(())   // 块值 = arm 值(windows 视角)
             }
-            #[allow(unreachable_code)]
-            Ok(())
+            #[cfg(not(target_os = "windows"))]
+            {
+                Ok(())   // mac 视角的 arm 尾
+            }
         }
         ToolKind::Cli => {
             if !which_in_login_shell(spec.0) {
